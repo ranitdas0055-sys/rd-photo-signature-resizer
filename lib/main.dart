@@ -61,7 +61,6 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   bool _keepRatio = true;
   bool _bengali = false;
   bool _busy = false;
-  bool _settingsLoaded = false;
 
   @override
   void initState() {
@@ -79,10 +78,8 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
         _targetKb = (prefs.getInt('targetKb') ?? 100).clamp(20, 2048);
         _keepRatio = prefs.getBool('keepRatio') ?? true;
         _bengali = prefs.getBool('bengali') ?? false;
-        _settingsLoaded = true;
       });
     } catch (_) {
-      if (mounted) setState(() => _settingsLoaded = true);
     }
   }
 
@@ -204,14 +201,14 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 decoration: const InputDecoration(labelText: 'Target size (KB)', helperText: '20–2048 KB (up to 2 MB)', border: OutlineInputBorder())),
               SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Keep aspect ratio', 'ছবির অনুপাত ঠিক রাখুন')),
                 value: keepRatio, onChanged: (v) => setDialogState(() => keepRatio = v)),
-              SwitchListTile(contentPadding: EdgeInsets.zero, title: Text('বাংলা ভাষা / Bengali'),
+              SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('বাংলা ভাষা / Bengali'),
                 value: bengali, onChanged: (v) => setDialogState(() => bengali = v)),
               const Divider(),
               ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.offline_bolt),
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
-              ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.info_outline),
-                title: const Text('RD Photo & Signature Resizer'), subtitle: const Text('Version 1.0.7')),
+              const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.7')),
             ]),
           ),
           actions: [
