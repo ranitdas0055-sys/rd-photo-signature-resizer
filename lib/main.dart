@@ -1,266 +1,522 @@
 import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
-import 'package:path/path.dart' as p;
 import 'package:gal/gal.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:share_plus/share_plus.dart';
 
-const blue = Color(0xFF2188DF);
-const testBanner = 'ca-app-pub-3940256099942544/6300978111';
+const Color brandBlue = Color(0xFF1769AA);
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
-  runApp(const RDApp());
+  runApp(const RDResizerApp());
 }
 
-class RDApp extends StatelessWidget {
-  const RDApp({super.key});
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    debugShowCheckedModeBanner: false,
-    title: 'RD Photo & Signature Resizer',
-    theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: blue), useMaterial3: true),
-    home: const ResizerHome(),
-  );
-}
-
-class ResizerHome extends StatefulWidget {
-  const ResizerHome({super.key});
-  @override
-  State<ResizerHome> createState() => _ResizerHomeState();
-}
-
-class _ResizerHomeState extends State<ResizerHome> {
-  final picker = ImagePicker();
-  final widthController = TextEditingController(text: '600');
-  final heightController = TextEditingController(text: '800');
-  File? source;
-  Uint8List? result;
-  String filename = '';
-  int originalBytes = 0;
-  int targetKb = 100;
-  bool keepRatio = true, bengali = false, busy = false;
-  BannerAd? banner;
-  bool bannerReady = false;
-
-  String t(String en, String bn) => bengali ? bn : en;
+class RDResizerApp extends StatelessWidget {
+  const RDResizerApp({super.key});
 
   @override
-  void initState() {
-    super.initState();
-    banner = BannerAd(
-      adUnitId: testBanner,
-      size: AdSize.banner,
-      request: const AdRequest(),
-      listener: BannerAdListener(
-        onAdLoaded: (_) { if (mounted) setState(() => bannerReady = true); },
-        onAdFailedToLoad: (ad, error) { ad.dispose(); },
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'RD Photo & Signature Resizer',
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: ColorScheme.fromSeed(seedColor: brandBlue),
+        scaffoldBackgroundColor: const Color(0xFFF5F8FC),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: brandBlue,
+          foregroundColor: Colors.white,
+          centerTitle: false,
+        ),
       ),
-    )..load();
+      home: const ResizerHomePage(),
+    );
   }
+}
+
+class ResizerHomePage extends StatefulWidget {
+  const ResizerHomePage({super.key});
+
+  @override
+  State<ResizerHomePage> createState() => _ResizerHomePageState();
+}
+
+class _ResizerHomePageState extends State<ResizerHomePage> {
+  final _picker = ImagePicker();
+  final _width = TextEditingController(text: '600');
+  final _height = TextEditingController(text: '800');
+
+  File? _source;
+  Uint8List? _output;
+  String _fileName = '';
+  int _sourceBytes = 0;
+  int _targetKb = 100;
+  bool _keepRatio = true;
+  bool _bengali = false;
+  bool _busy = false;
+
+  String tr(String en, String bn) => _bengali ? bn : en;
 
   @override
   void dispose() {
-    banner?.dispose();
-    widthController.dispose();
-    heightController.dispose();
+    _width.dispose();
+    _height.dispose();
     super.dispose();
   }
 
-  void msg(String value) {
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(value)));
+  void _message(String text) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
   }
 
-  Future<void> pick(ImageSource sourceType) async {
+  Future<void> _pick(ImageSource source) async {
     try {
-      final file = await picker.pickImage(source: sourceType, imageQuality: 100);
-      if (file == null) return;
-      final f = File(file.path);
-      setState(() { source = f; filename = p.basename(file.path); originalBytes = f.lengthSync(); result = null; });
-    } catch (e) { msg('${t('Unable to open image', 'ছবি খোলা যায়নি')}: $e'); }
+      final picked = await _picker.pickImage(
+        source: source,
+        imageQuality: 100,
+      );
+      if (picked == null) return;
+      final file = File(picked.path);
+      if (!await file.exists()) {
+        _message(tr('Selected file was not found.', 'নির্বাচিত ফাইল পাওয়া যায়নি।'));
+        return;
+      }
+      setState(() {
+        _source = file;
+        _fileName = path.basename(file.path);
+        _sourceBytes = file.lengthSync();
+        _output = null;
+      });
+    } catch (e) {
+      _message('${tr('Could not open image', 'ছবি খোলা যায়নি')}: $e');
+    }
   }
 
-  Future<void> crop() async {
-    if (source == null) return;
+  Future<void> _crop() async {
+    final file = _source;
+    if (file == null) return;
     try {
       final cropped = await ImageCropper().cropImage(
-        sourcePath: source!.path,
+        sourcePath: file.path,
         uiSettings: [
-          AndroidUiSettings(toolbarTitle: t('Crop image', 'ছবি ক্রপ করুন'), toolbarColor: blue, toolbarWidgetColor: Colors.white),
-          IOSUiSettings(title: 'Crop image'),
+          AndroidUiSettings(
+            toolbarTitle: tr('Crop photo', 'ছবি ক্রপ করুন'),
+            toolbarColor: brandBlue,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: brandBlue,
+            lockAspectRatio: false,
+          ),
+          IOSUiSettings(title: 'Crop photo'),
         ],
       );
-      if (cropped != null) setState(() { source = File(cropped.path); filename = p.basename(cropped.path); originalBytes = source!.lengthSync(); result = null; });
-    } catch (e) { msg('${t('Crop failed', 'ক্রপ করা যায়নি')}: $e'); }
+      if (cropped == null) return;
+      final newFile = File(cropped.path);
+      setState(() {
+        _source = newFile;
+        _fileName = path.basename(newFile.path);
+        _sourceBytes = newFile.lengthSync();
+        _output = null;
+      });
+    } catch (e) {
+      _message('${tr('Crop failed', 'ক্রপ করা যায়নি')}: $e');
+    }
   }
 
-  Future<void> resize() async {
-    if (source == null || busy) return;
-    setState(() => busy = true);
+  Future<void> _rotate() async {
+    final file = _source;
+    if (file == null || _busy) return;
     try {
-      final decoded = img.decodeImage(await source!.readAsBytes());
-      if (decoded == null) throw Exception('Unsupported image');
+      final decoded = img.decodeImage(await file.readAsBytes());
+      if (decoded == null) throw Exception('Unsupported image format');
+      final rotated = img.copyRotate(img.bakeOrientation(decoded), angle: 90);
+      final bytes = img.encodeJpg(rotated, quality: 95);
+      final dir = await getTemporaryDirectory();
+      final rotatedFile = File(path.join(
+        dir.path,
+        'RD_rotated_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      ));
+      await rotatedFile.writeAsBytes(bytes, flush: true);
+      if (!mounted) return;
+      setState(() {
+        _source = rotatedFile;
+        _fileName = path.basename(rotatedFile.path);
+        _sourceBytes = bytes.length;
+        _output = null;
+      });
+    } catch (e) {
+      _message('${tr('Rotate failed', 'ঘোরানো যায়নি')}: $e');
+    }
+  }
+
+  Future<void> _resize() async {
+    final file = _source;
+    if (file == null || _busy) return;
+
+    final requestedWidth = int.tryParse(_width.text.trim());
+    final requestedHeight = int.tryParse(_height.text.trim());
+    if (requestedWidth == null ||
+        requestedHeight == null ||
+        requestedWidth < 1 ||
+        requestedHeight < 1 ||
+        requestedWidth > 6000 ||
+        requestedHeight > 6000) {
+      _message(tr(
+        'Enter width and height between 1 and 6000 pixels.',
+        'Width ও Height ১ থেকে ৬০০০ পিক্সেলের মধ্যে দিন।',
+      ));
+      return;
+    }
+
+    setState(() => _busy = true);
+    try {
+      final decoded = img.decodeImage(await file.readAsBytes());
+      if (decoded == null) throw Exception('Unsupported image format');
       final oriented = img.bakeOrientation(decoded);
-      int w = int.tryParse(widthController.text) ?? 600;
-      int h = int.tryParse(heightController.text) ?? 800;
-      w = w.clamp(1, 6000); h = h.clamp(1, 6000);
-      if (keepRatio) {
+
+      var width = requestedWidth;
+      var height = requestedHeight;
+      if (_keepRatio) {
         final ratio = oriented.width / oriented.height;
-        if (w / h > ratio) { w = (h * ratio).round(); } else { h = (w / ratio).round(); }
+        if (width / height > ratio) {
+          width = (height * ratio).round().clamp(1, 6000);
+        } else {
+          height = (width / ratio).round().clamp(1, 6000);
+        }
       }
-      var working = img.copyResize(oriented, width: w, height: h, interpolation: img.Interpolation.average);
+
+      var working = img.copyResize(
+        oriented,
+        width: width,
+        height: height,
+        interpolation: img.Interpolation.average,
+      );
+      final maxBytes = _targetKb * 1024;
       var quality = 90;
-      final limit = targetKb * 1024;
-      Uint8List bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
-      int attempts = 0;
-      while (bytes.length > limit && attempts < 30) {
-        attempts++;
+      var bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+
+      // Reduce JPEG quality first, then dimensions, until the requested
+      // size is reached or the safe retry limit is met.
+      for (var attempt = 0; bytes.length > maxBytes && attempt < 36; attempt++) {
         if (quality > 35) {
-          quality -= 5;
+          quality = (quality - 5).clamp(35, 90);
         } else {
           quality = 75;
-          final nw = (working.width * .9).round().clamp(1, 6000);
-          final nh = (working.height * .9).round().clamp(1, 6000);
-          if (nw == working.width && nh == working.height) break;
-          working = img.copyResize(working, width: nw, height: nh);
+          final nextWidth = (working.width * 0.9).round().clamp(1, 6000);
+          final nextHeight = (working.height * 0.9).round().clamp(1, 6000);
+          if (nextWidth == working.width && nextHeight == working.height) break;
+          working = img.copyResize(
+            working,
+            width: nextWidth,
+            height: nextHeight,
+            interpolation: img.Interpolation.average,
+          );
         }
         bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
       }
+
       if (!mounted) return;
-      setState(() => result = bytes);
-      msg(bytes.length <= limit
-        ? t('Done: ${(bytes.length / 1024).toStringAsFixed(1)} KB', 'সম্পন্ন: ${(bytes.length / 1024).toStringAsFixed(1)} KB')
-        : t('Could not reach target; best result is ${(bytes.length / 1024).toStringAsFixed(1)} KB.', 'লক্ষ্য সাইজ পাওয়া যায়নি; সবচেয়ে কম সাইজ ${(bytes.length / 1024).toStringAsFixed(1)} KB।'));
-    } catch (e) { msg('${t('Resize failed', 'রিসাইজ করা যায়নি')}: $e'); }
-    finally { if (mounted) setState(() => busy = false); }
+      setState(() => _output = bytes);
+      final actualKb = (bytes.length / 1024).toStringAsFixed(1);
+      _message(bytes.length <= maxBytes
+          ? tr('Ready: $actualKb KB', 'তৈরি হয়েছে: $actualKb KB')
+          : tr(
+              'Best result: $actualKb KB. The target could not be reached.',
+              'সেরা ফলাফল: $actualKb KB। নির্দিষ্ট সাইজে আনা যায়নি।',
+            ));
+    } catch (e) {
+      _message('${tr('Resize failed', 'রিসাইজ করা যায়নি')}: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
   }
 
-  Future<File> outputFile() async {
+  Future<File> _makeOutputFile() async {
+    final bytes = _output;
+    if (bytes == null) throw StateError('No resized image');
     final dir = await getTemporaryDirectory();
-    final f = File(p.join(dir.path, 'RD_Resized_${DateTime.now().millisecondsSinceEpoch}.jpg'));
-    await f.writeAsBytes(result!);
-    return f;
+    final file = File(path.join(
+      dir.path,
+      'RD_Photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    ));
+    await file.writeAsBytes(bytes, flush: true);
+    return file;
   }
 
-  Future<void> save() async {
-    if (result == null) return;
-    try { await Gal.putImage((await outputFile()).path); msg(t('Saved to Gallery', 'গ্যালারিতে সেভ হয়েছে')); }
-    catch (e) { msg('${t('Save failed', 'সেভ করা যায়নি')}: $e'); }
+  Future<void> _save() async {
+    if (_output == null) return;
+    try {
+      await Gal.putImage((await _makeOutputFile()).path);
+      _message(tr('Saved to Gallery.', 'গ্যালারিতে সেভ হয়েছে।'));
+    } catch (e) {
+      _message('${tr('Could not save image', 'ছবি সেভ করা যায়নি')}: $e');
+    }
   }
 
-  Future<void> share() async {
-    if (result == null) return;
-    await Share.shareXFiles([XFile((await outputFile()).path)], text: 'Made with RD Photo & Signature Resizer');
+  Future<void> _share() async {
+    if (_output == null) return;
+    try {
+      final file = await _makeOutputFile();
+      await Share.shareXFiles(
+        [XFile(file.path)],
+        text: 'Made with RD Photo & Signature Resizer',
+      );
+    } catch (e) {
+      _message('${tr('Share failed', 'শেয়ার করা যায়নি')}: $e');
+    }
   }
 
-  Widget action(IconData icon, String label, Color color, VoidCallback onTap) => Card(
-    child: ListTile(
-      leading: CircleAvatar(backgroundColor: color, foregroundColor: Colors.white, child: Icon(icon)),
-      title: Text(label, style: const TextStyle(fontWeight: FontWeight.w600)),
-      trailing: const Icon(Icons.chevron_right),
-      onTap: onTap,
-    ),
-  );
+  Widget _sectionCard({required Widget child}) {
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0xFFE3EAF2)),
+      ),
+      child: Padding(padding: const EdgeInsets.all(16), child: child),
+    );
+  }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      backgroundColor: blue, foregroundColor: Colors.white,
-      title: Text(t('RD Photo Resizer', 'RD ফটো রিসাইজার')),
-      actions: [TextButton(onPressed: () => setState(() => bengali = !bengali), child: Text(bengali ? 'EN' : 'বাংলা', style: const TextStyle(color: Colors.white)))],
-    ),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(color: blue, borderRadius: BorderRadius.circular(18)),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Icon(Icons.photo_size_select_large, color: Colors.white, size: 42),
-            const SizedBox(height: 8),
-            const Text('RD Photo & Signature Resizer', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
-            Text(t('Resize photos and signatures offline', 'ইন্টারনেট ছাড়াই ছবি ও সিগনেচার রিসাইজ করুন'), style: const TextStyle(color: Colors.white70)),
-          ]),
-        ),
-        const SizedBox(height: 14),
-        action(Icons.photo_library, t('Select Photo / Signature', 'ছবি / সিগনেচার নির্বাচন করুন'), Colors.green, () => pick(ImageSource.gallery)),
-        action(Icons.camera_alt, t('Take a Photo', 'নতুন ছবি তুলুন'), Colors.deepOrange, () => pick(ImageSource.camera)),
-        if (source != null) ...[
-          Card(child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(filename, style: const TextStyle(fontWeight: FontWeight.bold)),
-              Text('${(originalBytes / 1024).toStringAsFixed(1)} KB'),
-              const SizedBox(height: 8),
-              Image.file(source!, height: 220, width: double.infinity, fit: BoxFit.contain),
-              Wrap(spacing: 8, children: [
-                OutlinedButton.icon(onPressed: crop, icon: const Icon(Icons.crop), label: Text(t('Crop', 'ক্রপ'))),
-                OutlinedButton.icon(onPressed: () async {
-                  final decoded = img.decodeImage(await source!.readAsBytes());
-                  if (decoded == null) return;
-                  final rotated = img.copyRotate(decoded, angle: 90);
-                  await source!.writeAsBytes(img.encodeJpg(rotated));
-                  setState(() { originalBytes = source!.lengthSync(); result = null; });
-                }, icon: const Icon(Icons.rotate_right), label: Text(t('Rotate', 'ঘোরান'))),
-              ]),
-            ]),
-          )),
-          Card(child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(t('Target file size: $targetKb KB', 'লক্ষ্য ফাইল সাইজ: $targetKb KB')),
-              Slider(min: 20, max: 2048, divisions: 99, value: targetKb.toDouble(), onChanged: (v) => setState(() => targetKb = v.round())),
-              Wrap(spacing: 6, children: [20, 50, 100, 200, 500, 1024, 2048].map((v) => ChoiceChip(
-                label: Text(v >= 1024 ? '${v ~/ 1024} MB' : '$v KB'),
-                selected: targetKb == v,
-                onSelected: (_) => setState(() => targetKb = v),
-              )).toList()),
-              const Divider(height: 24),
-              Text(t('Dimensions (pixels)', 'ছবির মাপ (পিক্সেল)')),
-              Row(children: [
-                Expanded(child: TextField(controller: widthController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Width'))),
-                const SizedBox(width: 12),
-                Expanded(child: TextField(controller: heightController, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Height'))),
-              ]),
-              SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(t('Keep aspect ratio', 'ছবির অনুপাত ঠিক রাখুন')), value: keepRatio, onChanged: (v) => setState(() => keepRatio = v)),
-              SizedBox(width: double.infinity, child: FilledButton.icon(
-                onPressed: busy ? null : resize,
-                icon: busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.photo_size_select_large),
-                label: Text(busy ? t('Processing...', 'কাজ চলছে...') : t('Resize Image', 'ছবি রিসাইজ করুন')),
-              )),
-            ]),
-          )),
+  Widget build(BuildContext context) {
+    final output = _output;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(tr('RD Photo Resizer', 'RD ফটো রিসাইজার')),
+        actions: [
+          TextButton(
+            onPressed: () => setState(() => _bengali = !_bengali),
+            child: Text(
+              _bengali ? 'English' : 'বাংলা',
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+          ),
         ],
-        if (result != null) Card(child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(t('Resized output', 'রিসাইজ করা ছবি'), style: Theme.of(context).textTheme.titleLarge),
-            Image.memory(result!, height: 220, fit: BoxFit.contain, width: double.infinity),
-            Text('${(result!.length / 1024).toStringAsFixed(1)} KB • JPG'),
-            Row(children: [
-              Expanded(child: FilledButton.icon(onPressed: save, icon: const Icon(Icons.download), label: Text(t('Save', 'সেভ')))),
-              const SizedBox(width: 8),
-              Expanded(child: OutlinedButton.icon(onPressed: share, icon: const Icon(Icons.share), label: Text(t('Share', 'শেয়ার')))),
-            ]),
-          ]),
-        )),
-        const SizedBox(height: 16),
-        Center(child: TextButton.icon(
-          onPressed: () => Share.share('Govt Job with RD - https://youtube.com/@govtjobwithrd'),
-          icon: const Icon(Icons.play_circle_fill, color: Colors.red),
-          label: const Text('YouTube: Govt Job with RD'),
-        )),
-        Text(t('Always check the official notice for required photo and signature specifications.', 'ছবি ও সিগনেচারের সঠিক মাপের জন্য অফিসিয়াল বিজ্ঞপ্তি দেখুন।'), textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: Colors.black54)),
-      ],
-    ),
-    bottomNavigationBar: bannerReady && banner != null
-      ? SizedBox(height: banner!.size.height.toDouble(), child: AdWidget(ad: banner!))
-      : null,
-  );
+      ),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFF1769AA), Color(0xFF2798D5)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.photo_size_select_large, color: Colors.white, size: 42),
+                  const SizedBox(height: 10),
+                  const Text(
+                    'RD Photo & Signature Resizer',
+                    style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    tr('Resize images on your phone. Your photos stay on your device.',
+                        'মোবাইলেই ছবি রিসাইজ করুন। আপনার ছবি ফোনেই থাকে।'),
+                    style: const TextStyle(color: Colors.white),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            _sectionCard(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(tr('1. Choose an image', '১. ছবি নির্বাচন করুন'),
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 12),
+                  FilledButton.icon(
+                    onPressed: _busy ? null : () => _pick(ImageSource.gallery),
+                    icon: const Icon(Icons.photo_library_outlined),
+                    label: Text(tr('Select from Gallery', 'গ্যালারি থেকে ছবি নিন')),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _pick(ImageSource.camera),
+                    icon: const Icon(Icons.camera_alt_outlined),
+                    label: Text(tr('Take a Photo', 'ক্যামেরায় ছবি তুলুন')),
+                  ),
+                ],
+              ),
+            ),
+            if (_source != null) ...[
+              const SizedBox(height: 12),
+              _sectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tr('Selected image', 'নির্বাচিত ছবি'),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    Text(_fileName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    Text('${(_sourceBytes / 1024).toStringAsFixed(1)} KB'),
+                    const SizedBox(height: 12),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(_source!, height: 210, width: double.infinity, fit: BoxFit.contain),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _crop,
+                          icon: const Icon(Icons.crop),
+                          label: Text(tr('Crop', 'ক্রপ')),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _busy ? null : _rotate,
+                          icon: const Icon(Icons.rotate_right),
+                          label: Text(tr('Rotate 90°', '৯০° ঘোরান')),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _sectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(tr('2. Resize settings', '২. রিসাইজ সেটিংস'),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _width,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Width (px)', border: OutlineInputBorder()),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextField(
+                            controller: _height,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: 'Height (px)', border: OutlineInputBorder()),
+                          ),
+                        ),
+                      ],
+                    ),
+                    SwitchListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(tr('Keep aspect ratio', 'ছবির অনুপাত ঠিক রাখুন')),
+                      value: _keepRatio,
+                      onChanged: (value) => setState(() => _keepRatio = value),
+                    ),
+                    Text(
+                      tr('Target file size: $_targetKb KB', 'লক্ষ্য ফাইল সাইজ: $_targetKb KB'),
+                      style: const TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                    Slider(
+                      value: _targetKb.toDouble(),
+                      min: 20,
+                      max: 2048,
+                      divisions: 99,
+                      label: _targetKb >= 1024
+                          ? '${(_targetKb / 1024).toStringAsFixed(1)} MB'
+                          : '$_targetKb KB',
+                      onChanged: (value) => setState(() => _targetKb = value.round()),
+                    ),
+                    Wrap(
+                      spacing: 6,
+                      children: [20, 50, 100, 200, 500, 1024, 2048]
+                          .map((size) => ChoiceChip(
+                                label: Text(size >= 1024 ? '${size ~/ 1024} MB' : '$size KB'),
+                                selected: _targetKb == size,
+                                onSelected: (_) => setState(() => _targetKb = size),
+                              ))
+                          .toList(),
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.icon(
+                        onPressed: _busy ? null : _resize,
+                        icon: _busy
+                            ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.tune),
+                        label: Text(_busy ? tr('Processing...', 'কাজ চলছে...') : tr('Resize Image', 'ছবি রিসাইজ করুন')),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (output != null) ...[
+              const SizedBox(height: 12),
+              _sectionCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(tr('3. Resized result', '৩. রিসাইজ করা ছবি'),
+                        style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 10),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.memory(output, height: 210, fit: BoxFit.contain),
+                    ),
+                    const SizedBox(height: 8),
+                    Text('${(output.length / 1024).toStringAsFixed(1)} KB • JPG'),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: FilledButton.icon(
+                            onPressed: _save,
+                            icon: const Icon(Icons.download),
+                            label: Text(tr('Save', 'সেভ')),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _share,
+                            icon: const Icon(Icons.share),
+                            label: Text(tr('Share', 'শেয়ার')),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 16),
+            Center(
+              child: TextButton.icon(
+                onPressed: () => Share.share('Govt Job with RD - https://youtube.com/@govtjobwithrd'),
+                icon: const Icon(Icons.play_circle_fill, color: Colors.red),
+                label: const Text('YouTube: Govt Job with RD'),
+              ),
+            ),
+            Text(
+              tr('Check the official application notice for the exact photo and signature size required.',
+                  'ছবি ও সিগনেচারের সঠিক মাপের জন্য সংশ্লিষ্ট অফিসিয়াল বিজ্ঞপ্তি দেখুন।'),
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: Colors.black54),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
