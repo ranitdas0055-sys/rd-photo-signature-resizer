@@ -1,4 +1,4 @@
-name: Build and publish Android APK
+name: Build and publish RD Photo Resizer
 
 on:
   workflow_dispatch:
@@ -28,19 +28,22 @@ jobs:
           channel: stable
           cache: true
 
-      - name: Generate Android platform files
+      - name: Generate Android project files
         run: flutter create . --platforms=android
 
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Analyze Dart code
+        run: flutter analyze
+
       - name: Build release APK
         run: flutter build apk --release
 
-      - name: Publish APK to GitHub Releases
+      - name: Publish APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-v1.0.${{ github.run_number }}
-          name: RD Photo & Signature Resizer APK v1.0.${{ github.run_number }}
+          tag_name: apk-v1.0.4
+          name: RD Photo & Signature Resizer v1.0.4
           generate_release_notes: true
           files: build/app/outputs/flutter-apk/app-release.apk
