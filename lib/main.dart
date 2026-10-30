@@ -23,7 +23,7 @@ class RDResizerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RD Photo & Signature Resizer',
+      title: 'RD Custom Photo Resizer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -287,8 +287,39 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   Widget build(BuildContext context) {
     final output = _output;
     return Scaffold(
+      drawer: Drawer(
+        child: Container(
+          color: brandBlue,
+          child: SafeArea(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(22, 34, 18, 28),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Icon(Icons.photo_size_select_large, color: Colors.white, size: 62),
+                    SizedBox(height: 14),
+                    Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    SizedBox(height: 5),
+                    Text('VERSION 1.0.5', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                  ]),
+                ),
+                const Divider(color: Colors.white30),
+                ListTile(leading: const Icon(Icons.tune, color: Colors.white), title: Text(tr('Custom Resize', 'কাস্টম রিসাইজ'), style: const TextStyle(color: Colors.white)), onTap: () => Navigator.pop(context)),
+                ListTile(leading: const Icon(Icons.settings, color: Colors.white), title: Text(tr('Settings', 'সেটিংস'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); showDialog<void>(context: context, builder: (ctx) => AlertDialog(title: Text(tr('Settings', 'সেটিংস')), content: Text(tr('Version 1.0.5\\nImages are processed on your device and saved to Gallery.', 'ভার্সন ১.০.৫\\nছবি আপনার ফোনেই প্রসেস হয় এবং Gallery-তে সেভ হয়।')), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))])); }),
+                ListTile(leading: const Icon(Icons.help_outline, color: Colors.white), title: Text(tr('Help', 'সাহায্য'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _message(tr('Choose a photo, enter your own width and height in pixels, then tap Custom Resize.', 'ছবি বেছে নিজের মতো Width ও Height দিন, তারপর Custom Resize চাপুন।')); }),
+                ListTile(leading: const Icon(Icons.share, color: Colors.white), title: Text(tr('Share app', 'অ্যাপ শেয়ার'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('RD Custom Photo Resizer'); }),
+                ListTile(leading: const Icon(Icons.play_circle_fill, color: Colors.white), title: const Text('Govt Job with RD', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('https://youtube.com/@govtjobwithrd'); }),
+                const Padding(padding: EdgeInsets.fromLTRB(22, 24, 18, 10), child: Text('ABOUT', style: TextStyle(color: Colors.white70))),
+                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.5', style: TextStyle(color: Colors.white))),
+              ],
+            ),
+          ),
+        ),
+      ),
       appBar: AppBar(
-        title: Text(tr('RD Photo Resizer', 'RD ফটো রিসাইজার')),
+        title: Text(tr('RD Custom Resizer', 'RD কাস্টম রিসাইজার')),
+        leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),
         actions: [
           TextButton(
             onPressed: () => setState(() => _bengali = !_bengali),
@@ -324,8 +355,8 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    tr('Resize images on your phone. Your photos stay on your device.',
-                        'মোবাইলেই ছবি রিসাইজ করুন। আপনার ছবি ফোনেই থাকে।'),
+                    tr('Set your own photo width, height and file size. Photos stay on your device.',
+                        'নিজের মতো ছবির Width, Height ও ফাইল সাইজ সেট করুন। ছবি ফোনেই থাকে।'),
                     style: const TextStyle(color: Colors.white),
                   ),
                 ],
@@ -394,7 +425,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(tr('2. Resize settings', '২. রিসাইজ সেটিংস'),
+                    Text(tr('2. Custom resize settings', '২. কাস্টম রিসাইজ সেটিংস'),
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     Row(
@@ -454,7 +485,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                         icon: _busy
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.tune),
-                        label: Text(_busy ? tr('Processing...', 'কাজ চলছে...') : tr('Resize Image', 'ছবি রিসাইজ করুন')),
+                        label: Text(_busy ? tr('Processing...', 'কাজ চলছে...') : tr('Custom Resize', 'কাস্টম রিসাইজ করুন')),
                       ),
                     ),
                   ],
