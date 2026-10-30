@@ -9,6 +9,7 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 const Color brandBlue = Color(0xFF1769AA);
 
@@ -60,6 +61,30 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   bool _keepRatio = true;
   bool _bengali = false;
   bool _busy = false;
+  bool _settingsLoaded = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferences();
+  }
+
+  Future<void> _loadPreferences() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _width.text = '${prefs.getInt('defaultWidth') ?? 600}';
+        _height.text = '${prefs.getInt('defaultHeight') ?? 800}';
+        _targetKb = (prefs.getInt('targetKb') ?? 100).clamp(20, 2048);
+        _keepRatio = prefs.getBool('keepRatio') ?? true;
+        _bengali = prefs.getBool('bengali') ?? false;
+        _settingsLoaded = true;
+      });
+    } catch (_) {
+      if (mounted) setState(() => _settingsLoaded = true);
+    }
+  }
 
   String tr(String en, String bn) => _bengali ? bn : en;
 
@@ -154,6 +179,73 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
     }
   }
 
+
+  Future<void> _openSettings() async {
+    final widthController = TextEditingController(text: _width.text);
+    final heightController = TextEditingController(text: _height.text);
+    final sizeController = TextEditingController(text: '$_targetKb');
+    var keepRatio = _keepRatio;
+    var bengali = _bengali;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(tr('Settings', 'সেটিংস')),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: widthController, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Default Width (px)', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: heightController, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Default Height (px)', border: OutlineInputBorder())),
+              const SizedBox(height: 10),
+              TextField(controller: sizeController, keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Target size (KB)', helperText: '20–2048 KB (up to 2 MB)', border: OutlineInputBorder())),
+              SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Keep aspect ratio', 'ছবির অনুপাত ঠিক রাখুন')),
+                value: keepRatio, onChanged: (v) => setDialogState(() => keepRatio = v)),
+              SwitchListTile(contentPadding: EdgeInsets.zero, title: Text('বাংলা ভাষা / Bengali'),
+                value: bengali, onChanged: (v) => setDialogState(() => bengali = v)),
+              const Divider(),
+              ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.offline_bolt),
+                title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
+                subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
+              ListTile(contentPadding: EdgeInsets.zero, leading: const Icon(Icons.info_outline),
+                title: const Text('RD Photo & Signature Resizer'), subtitle: const Text('Version 1.0.7')),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(tr('Cancel', 'বাতিল'))),
+            FilledButton(onPressed: () async {
+              final w = int.tryParse(widthController.text.trim());
+              final h = int.tryParse(heightController.text.trim());
+              final kb = int.tryParse(sizeController.text.trim());
+              if (w == null || h == null || kb == null || w < 1 || h < 1 || w > 6000 || h > 6000 || kb < 20 || kb > 2048) {
+                _message('Enter valid dimensions (1–6000 px) and size (20–2048 KB).');
+                return;
+              }
+              setState(() {
+                _width.text = '$w'; _height.text = '$h'; _targetKb = kb;
+                _keepRatio = keepRatio; _bengali = bengali; _output = null;
+              });
+              try {
+                final prefs = await SharedPreferences.getInstance();
+                await prefs.setInt('defaultWidth', w);
+                await prefs.setInt('defaultHeight', h);
+                await prefs.setInt('targetKb', kb);
+                await prefs.setBool('keepRatio', keepRatio);
+                await prefs.setBool('bengali', bengali);
+              } catch (_) {
+                _message(tr('Settings applied for this session.', 'এই সেশনের জন্য সেটিংস প্রয়োগ হয়েছে।'));
+              }
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            }, child: Text(tr('Save Settings', 'সেটিংস সেভ করুন'))),
+          ],
+        ),
+      ),
+    );
+    widthController.dispose(); heightController.dispose(); sizeController.dispose();
+  }
 
   Future<void> _openCustomResizeDialog() async {
     final widthController = TextEditingController(text: _width.text);
@@ -387,17 +479,17 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.6', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.7', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
                 ListTile(leading: const Icon(Icons.tune, color: Colors.white), title: Text(tr('Custom Resize', 'কাস্টম রিসাইজ'), style: const TextStyle(color: Colors.white)), onTap: () => Navigator.pop(context)),
-                ListTile(leading: const Icon(Icons.settings, color: Colors.white), title: Text(tr('Settings', 'সেটিংস'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); showDialog<void>(context: context, builder: (ctx) => AlertDialog(title: Text(tr('Settings', 'সেটিংস')), content: Text(tr('Version 1.0.6\\nImages are processed on your device and saved to Gallery.', 'ভার্সন ১.০.৫\\nছবি আপনার ফোনেই প্রসেস হয় এবং Gallery-তে সেভ হয়।')), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))])); }),
+                ListTile(leading: const Icon(Icons.settings, color: Colors.white), title: Text(tr('Settings', 'সেটিংস'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _openSettings(); }),
                 ListTile(leading: const Icon(Icons.help_outline, color: Colors.white), title: Text(tr('Help', 'সাহায্য'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _message(tr('Choose a photo, enter your own width and height in pixels, then tap Custom Resize.', 'ছবি বেছে নিজের মতো Width ও Height দিন, তারপর Custom Resize চাপুন।')); }),
                 ListTile(leading: const Icon(Icons.share, color: Colors.white), title: Text(tr('Share app', 'অ্যাপ শেয়ার'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('RD Custom Photo Resizer'); }),
                 ListTile(leading: const Icon(Icons.play_circle_fill, color: Colors.white), title: const Text('Govt Job with RD', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('https://youtube.com/@govtjobwithrd'); }),
                 const Padding(padding: EdgeInsets.fromLTRB(22, 24, 18, 10), child: Text('ABOUT', style: TextStyle(color: Colors.white70))),
-                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.6', style: TextStyle(color: Colors.white))),
+                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.7', style: TextStyle(color: Colors.white))),
               ],
             ),
           ),
