@@ -154,6 +154,92 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
     }
   }
 
+
+  Future<void> _openCustomResizeDialog() async {
+    final widthController = TextEditingController(text: _width.text);
+    final heightController = TextEditingController(text: _height.text);
+    final sizeController = TextEditingController(text: '$_targetKb');
+    var keepRatio = _keepRatio;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(tr('Custom Resize', 'কাস্টম রিসাইজ')),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: widthController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Width (px)', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: heightController,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(labelText: 'Height (px)', border: OutlineInputBorder()),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: sizeController,
+                  keyboardType: TextInputType.number,
+                  decoration: InputDecoration(
+                    labelText: tr('Target size (KB)', 'লক্ষ্য সাইজ (KB)'),
+                    helperText: tr('20 to 2048 KB (up to 2 MB)', '২০ থেকে ২০৪৮ KB (সর্বোচ্চ ২ MB)'),
+                    border: const OutlineInputBorder(),
+                  ),
+                ),
+                CheckboxListTile(
+                  contentPadding: EdgeInsets.zero,
+                  value: keepRatio,
+                  title: Text(tr('Keep aspect ratio', 'ছবির অনুপাত ঠিক রাখুন')),
+                  onChanged: (value) => setDialogState(() => keepRatio = value ?? true),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(tr('Cancel', 'বাতিল')),
+            ),
+            FilledButton(
+              onPressed: () {
+                final w = int.tryParse(widthController.text.trim());
+                final h = int.tryParse(heightController.text.trim());
+                final kb = int.tryParse(sizeController.text.trim());
+                if (w == null || h == null || kb == null ||
+                    w < 1 || h < 1 || w > 6000 || h > 6000 ||
+                    kb < 20 || kb > 2048) {
+                  _message(tr(
+                    'Enter width and height from 1–6000 px and size from 20–2048 KB.',
+                    'Width ও Height ১–৬০০০ px এবং সাইজ ২০–২০৪৮ KB দিন।',
+                  ));
+                  return;
+                }
+                setState(() {
+                  _width.text = '$w';
+                  _height.text = '$h';
+                  _targetKb = kb;
+                  _keepRatio = keepRatio;
+                  _output = null;
+                });
+                Navigator.pop(dialogContext);
+                _resize();
+              },
+              child: Text(tr('Apply & Resize', 'সেট করে রিসাইজ')),
+            ),
+          ],
+        ),
+      ),
+    );
+    widthController.dispose();
+    heightController.dispose();
+    sizeController.dispose();
+  }
+
   Future<void> _resize() async {
     final file = _source;
     if (file == null || _busy) return;
@@ -301,17 +387,17 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.5', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.6', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
                 ListTile(leading: const Icon(Icons.tune, color: Colors.white), title: Text(tr('Custom Resize', 'কাস্টম রিসাইজ'), style: const TextStyle(color: Colors.white)), onTap: () => Navigator.pop(context)),
-                ListTile(leading: const Icon(Icons.settings, color: Colors.white), title: Text(tr('Settings', 'সেটিংস'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); showDialog<void>(context: context, builder: (ctx) => AlertDialog(title: Text(tr('Settings', 'সেটিংস')), content: Text(tr('Version 1.0.5\\nImages are processed on your device and saved to Gallery.', 'ভার্সন ১.০.৫\\nছবি আপনার ফোনেই প্রসেস হয় এবং Gallery-তে সেভ হয়।')), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))])); }),
+                ListTile(leading: const Icon(Icons.settings, color: Colors.white), title: Text(tr('Settings', 'সেটিংস'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); showDialog<void>(context: context, builder: (ctx) => AlertDialog(title: Text(tr('Settings', 'সেটিংস')), content: Text(tr('Version 1.0.6\\nImages are processed on your device and saved to Gallery.', 'ভার্সন ১.০.৫\\nছবি আপনার ফোনেই প্রসেস হয় এবং Gallery-তে সেভ হয়।')), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK'))])); }),
                 ListTile(leading: const Icon(Icons.help_outline, color: Colors.white), title: Text(tr('Help', 'সাহায্য'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _message(tr('Choose a photo, enter your own width and height in pixels, then tap Custom Resize.', 'ছবি বেছে নিজের মতো Width ও Height দিন, তারপর Custom Resize চাপুন।')); }),
                 ListTile(leading: const Icon(Icons.share, color: Colors.white), title: Text(tr('Share app', 'অ্যাপ শেয়ার'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('RD Custom Photo Resizer'); }),
                 ListTile(leading: const Icon(Icons.play_circle_fill, color: Colors.white), title: const Text('Govt Job with RD', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('https://youtube.com/@govtjobwithrd'); }),
                 const Padding(padding: EdgeInsets.fromLTRB(22, 24, 18, 10), child: Text('ABOUT', style: TextStyle(color: Colors.white70))),
-                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.5', style: TextStyle(color: Colors.white))),
+                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.6', style: TextStyle(color: Colors.white))),
               ],
             ),
           ),
@@ -425,7 +511,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(tr('2. Custom resize settings', '২. কাস্টম রিসাইজ সেটিংস'),
+                    Text(tr('2. Resize settings', '২. রিসাইজ সেটিংস'),
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     Row(
@@ -485,7 +571,16 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                         icon: _busy
                             ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
                             : const Icon(Icons.tune),
-                        label: Text(_busy ? tr('Processing...', 'কাজ চলছে...') : tr('Custom Resize', 'কাস্টম রিসাইজ করুন')),
+                        label: Text(_busy ? tr('Processing...', 'কাজ চলছে...') : tr('Resize Image', 'ছবি রিসাইজ করুন')),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _busy ? null : _openCustomResizeDialog,
+                        icon: const Icon(Icons.tune),
+                        label: Text(tr('Custom Resize', 'কাস্টম রিসাইজ')),
                       ),
                     ),
                   ],
