@@ -13,6 +13,60 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 const Color brandBlue = Color(0xFF1769AA);
 
+Uint8List _resizeImageInBackground(Map<String, Object> args) {
+  final sourceBytes = args['bytes'] as Uint8List;
+  final requestedWidth = args['width'] as int;
+  final requestedHeight = args['height'] as int;
+  final targetKb = args['targetKb'] as int;
+  final keepRatio = args['keepRatio'] as bool;
+
+  final decoded = img.decodeImage(sourceBytes);
+  if (decoded == null) throw Exception('Unsupported image format');
+  final oriented = img.bakeOrientation(decoded);
+
+  var width = requestedWidth;
+  var height = requestedHeight;
+  if (keepRatio) {
+    final ratio = oriented.width / oriented.height;
+    if (width / height > ratio) {
+      width = (height * ratio).round().clamp(1, 6000);
+    } else {
+      height = (width / ratio).round().clamp(1, 6000);
+    }
+  }
+
+  var working = img.copyResize(
+    oriented,
+    width: width,
+    height: height,
+    interpolation: img.Interpolation.average,
+  );
+  final maxBytes = targetKb * 1024;
+  var quality = 90;
+  var bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+
+  for (var attempt = 0; bytes.length > maxBytes && attempt < 36; attempt++) {
+    if (quality > 35) {
+      quality = (quality - 5).clamp(35, 90);
+    } else {
+      quality = 75;
+      final nextWidth = (working.width * 0.9).round().clamp(1, 6000);
+      final nextHeight = (working.height * 0.9).round().clamp(1, 6000);
+      if (nextWidth == working.width && nextHeight == working.height) break;
+      working = img.copyResize(
+        working,
+        width: nextWidth,
+        height: nextHeight,
+        interpolation: img.Interpolation.average,
+      );
+    }
+    bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+  }
+  return bytes;
+}
+
+
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(const RDResizerApp());
@@ -350,55 +404,20 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
 
     setState(() => _busy = true);
     try {
-      final decoded = img.decodeImage(await file.readAsBytes());
-      if (decoded == null) throw Exception('Unsupported image format');
-      final oriented = img.bakeOrientation(decoded);
-
-      var width = requestedWidth;
-      var height = requestedHeight;
-      if (_keepRatio) {
-        final ratio = oriented.width / oriented.height;
-        if (width / height > ratio) {
-          width = (height * ratio).round().clamp(1, 6000);
-        } else {
-          height = (width / ratio).round().clamp(1, 6000);
-        }
-      }
-
-      var working = img.copyResize(
-        oriented,
-        width: width,
-        height: height,
-        interpolation: img.Interpolation.average,
-      );
-      final maxBytes = _targetKb * 1024;
-      var quality = 90;
-      var bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
-
-      // Reduce JPEG quality first, then dimensions, until the requested
-      // size is reached or the safe retry limit is met.
-      for (var attempt = 0; bytes.length > maxBytes && attempt < 36; attempt++) {
-        if (quality > 35) {
-          quality = (quality - 5).clamp(35, 90);
-        } else {
-          quality = 75;
-          final nextWidth = (working.width * 0.9).round().clamp(1, 6000);
-          final nextHeight = (working.height * 0.9).round().clamp(1, 6000);
-          if (nextWidth == working.width && nextHeight == working.height) break;
-          working = img.copyResize(
-            working,
-            width: nextWidth,
-            height: nextHeight,
-            interpolation: img.Interpolation.average,
-          );
-        }
-        bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
-      }
+      final sourceBytes = await file.readAsBytes();
+      final result = await compute(_resizeImageInBackground, <String, Object>{
+        'bytes': sourceBytes,
+        'width': requestedWidth,
+        'height': requestedHeight,
+        'targetKb': _targetKb,
+        'keepRatio': _keepRatio,
+      });
 
       if (!mounted) return;
-      setState(() => _output = bytes);
-      final actualKb = (bytes.length / 1024).toStringAsFixed(1);
-      _message(bytes.length <= maxBytes
+      setState(() => _output = result);
+      final actualKb = (result.length / 1024).toStringAsFixed(1);
+      final maxBytes = _targetKb * 1024;
+      _message(result.length <= maxBytes
           ? tr('Ready: $actualKb KB', 'তৈরি হয়েছে: $actualKb KB')
           : tr(
               'Best result: $actualKb KB. The target could not be reached.',
