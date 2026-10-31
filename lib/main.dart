@@ -914,7 +914,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
-                      value: _outputFormat,
+                      initialValue: _outputFormat,
                       decoration: InputDecoration(labelText: tr('Output format', 'আউটপুট ফরম্যাট'), border: const OutlineInputBorder()),
                       items: const [
                         DropdownMenuItem(value: 'jpg', child: Text('JPG / JPEG')),
