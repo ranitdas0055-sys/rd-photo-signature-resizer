@@ -34,6 +34,7 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final decoded = img.decodeImage(sourceBytes);
   if (decoded == null) throw Exception('Unsupported image format');
   final oriented = img.bakeOrientation(decoded);
+  final format = (args['format'] ?? 'jpg').toString();
   final ratio = oriented.width / oriented.height;
 
   var baseWidth = requestedWidth;
@@ -46,6 +47,10 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
     }
   }
 
+  if (format == 'png' || format == 'webp') {
+    final resized = img.copyResize(oriented, width: baseWidth, height: baseHeight, interpolation: img.Interpolation.average);
+    return Uint8List.fromList(format == 'png' ? img.encodePng(resized) : img.encodeWebP(resized, quality: 85));
+  }
   final targetBytes = targetKb * 1024;
   Uint8List? best;
   var bestDistance = 1 << 62;
@@ -168,6 +173,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   bool _busy = false;
   bool _updateCheckStarted = false;
   int _scalePercent = 100;
+  String _outputFormat = 'jpg';
   final List<File> _batchSources = [];
 
   @override
@@ -477,7 +483,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.13')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.14')),
             ]),
           ),
           actions: [
@@ -626,6 +632,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
         'height': requestedHeight,
         'targetKb': _targetKb,
         'keepRatio': _keepRatio,
+        'format': _outputFormat,
       });
 
       if (!mounted) return;
@@ -651,7 +658,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
     final dir = await getTemporaryDirectory();
     final file = File(path.join(
       dir.path,
-      'RD_Photo_${DateTime.now().millisecondsSinceEpoch}.jpg',
+      'RD_Photo_${DateTime.now().millisecondsSinceEpoch}.$_outputFormat',
     ));
     await file.writeAsBytes(bytes, flush: true);
     return file;
@@ -660,7 +667,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   Future<void> _save() async {
     if (_output == null) return;
     try {
-      await Gal.putImage((await _makeOutputFile()).path);
+      await Gal.putImage((await _makeOutputFile()).path, album: 'RD Photo Resizer');
       _message(tr('Saved to Gallery.', 'গ্যালারিতে সেভ হয়েছে।'));
     } catch (e) {
       _message('${tr('Could not save image', 'ছবি সেভ করা যায়নি')}: $e');
@@ -710,7 +717,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.13', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.14', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
@@ -905,6 +912,32 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                       value: _keepRatio,
                       onChanged: (value) => setState(() => _keepRatio = value),
                     ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
+                      value: _outputFormat,
+                      decoration: InputDecoration(labelText: tr('Output format', 'আউটপুট ফরম্যাট'), border: const OutlineInputBorder()),
+                      items: const [
+                        DropdownMenuItem(value: 'jpg', child: Text('JPG / JPEG')),
+                        DropdownMenuItem(value: 'png', child: Text('PNG')),
+                        DropdownMenuItem(value: 'webp', child: Text('WEBP')),
+                      ],
+                      onChanged: (value) => setState(() { _outputFormat = value ?? 'jpg'; _output = null; }),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(tr('Aspect ratio presets', 'ছবির অনুপাত বেছে নিন'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      ['1:1', 1, 1], ['3:4', 3, 4], ['4:3', 4, 3], ['16:9', 16, 9], ['9:16', 9, 16]
+                    ].map((item) => ActionChip(
+                      label: Text(item[0] as String),
+                      onPressed: _busy ? null : () {
+                        final w = int.tryParse(_width.text) ?? 600;
+                        final h = int.tryParse(_height.text) ?? 800;
+                        final rw = item[1] as int;
+                        final rh = item[2] as int;
+                        final scale = (w / rw < h / rh) ? w / rw : h / rh;
+                        setState(() { _width.text = (rw * scale).round().toString(); _height.text = (rh * scale).round().toString(); _keepRatio = false; _output = null; });
+                      },
+                    )).toList()),
                     Text(
                       tr('Target file size: $_targetKb KB', 'লক্ষ্য ফাইল সাইজ: $_targetKb KB'),
                       style: const TextStyle(fontWeight: FontWeight.w600),
@@ -967,7 +1000,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                       child: Image.memory(output, height: 210, fit: BoxFit.contain),
                     ),
                     const SizedBox(height: 8),
-                    Text('${(output.length / 1024).toStringAsFixed(1)} KB • JPG'),
+                    Text('${(output.length / 1024).toStringAsFixed(1)} KB • ${_outputFormat.toUpperCase()}'),
                     const SizedBox(height: 10),
                     Row(
                       children: [
