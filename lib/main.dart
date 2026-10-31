@@ -14,6 +14,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:open_filex/open_filex.dart';
 
 const Color brandBlue = Color(0xFF1769AA);
 
@@ -276,7 +277,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
               TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Later', 'পরে'))),
               FilledButton(onPressed: () {
                 Navigator.pop(ctx);
-                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+                _downloadAndInstallApk(url);
               }, child: Text(tr('Get update', 'আপডেট নিন'))),
             ],
           ),
@@ -286,6 +287,35 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
       }
     } catch (_) {
       if (showUpToDate) _message(tr('Update check failed. Check your internet.', 'আপডেট চেক হয়নি। ইন্টারনেট দেখুন।'));
+    }
+  }
+
+  Future<void> _downloadAndInstallApk(String url) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      _message(tr('Downloading update APK...', 'আপডেট APK ডাউনলোড হচ্ছে...'));
+      final response = await http.get(Uri.parse(url))
+          .timeout(const Duration(minutes: 5));
+      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+        throw Exception('APK download failed (${response.statusCode})');
+      }
+      final dir = await getTemporaryDirectory();
+      final apkFile = File(path.join(dir.path, 'RD-Photo-Resizer-update.apk'));
+      await apkFile.writeAsBytes(response.bodyBytes, flush: true);
+      if (!mounted) return;
+      setState(() => _busy = false);
+      final result = await OpenFilex.open(
+        apkFile.path,
+        type: 'application/vnd.android.package-archive',
+      );
+      if (result.type != ResultType.done && mounted) {
+        _message('${tr('Could not open installer', 'ইনস্টলার খোলা যায়নি')}: ${result.message}');
+      }
+    } catch (e) {
+      _message('${tr('Update download failed', 'আপডেট ডাউনলোড হয়নি')}: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -395,10 +425,12 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
           'height': height,
           'targetKb': _targetKb,
           'keepRatio': _keepRatio,
+          'format': _outputFormat,
+          'fitMode': _fitMode,
         });
-        final out = File(path.join(dir.path, 'RD_Batch_${DateTime.now().millisecondsSinceEpoch}_$i.jpg'));
+        final out = File(path.join(dir.path, 'RD_Batch_${DateTime.now().millisecondsSinceEpoch}_$i.$_outputFormat'));
         await out.writeAsBytes(result, flush: true);
-        await Gal.putImage(out.path);
+        await Gal.putImage(out.path, album: 'RD Photo Resizer');
         saved++;
         if (mounted) _message(tr('Processed $saved of ${_batchSources.length} images...', '$saved / ${_batchSources.length}টি ছবি তৈরি হচ্ছে...'));
       }
