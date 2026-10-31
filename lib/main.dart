@@ -17,6 +17,13 @@ import 'package:url_launcher/url_launcher.dart';
 
 const Color brandBlue = Color(0xFF1769AA);
 
+(int, int) _decodeDimensions(Uint8List bytes) {
+  final decoded = img.decodeImage(bytes);
+  if (decoded == null) throw Exception('Unsupported image format');
+  final oriented = img.bakeOrientation(decoded);
+  return (oriented.width, oriented.height);
+}
+
 Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final sourceBytes = args['bytes'] as Uint8List;
   final requestedWidth = args['width'] as int;
@@ -160,6 +167,8 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   bool _bengali = false;
   bool _busy = false;
   bool _updateCheckStarted = false;
+  int _scalePercent = 100;
+  final List<File> _batchSources = [];
 
   @override
   void initState() {
@@ -295,6 +304,88 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
       });
     } catch (e) {
       _message('${tr('Could not open image', 'ছবি খোলা যায়নি')}: $e');
+    }
+  }
+
+  Future<void> _pickMultiple() async {
+    try {
+      final picked = await _picker.pickMultiImage(imageQuality: 100);
+      if (picked.isEmpty) return;
+      final files = picked.map((item) => File(item.path)).toList();
+      final valid = <File>[];
+      for (final file in files) {
+        if (await file.exists()) valid.add(file);
+      }
+      if (valid.isEmpty) {
+        _message(tr('No valid images selected.', 'কোনও সঠিক ছবি নির্বাচন করা হয়নি।'));
+        return;
+      }
+      setState(() {
+        _batchSources
+          ..clear()
+          ..addAll(valid);
+        _source = valid.first;
+        _fileName = path.basename(valid.first.path);
+        _sourceBytes = valid.first.lengthSync();
+        _output = null;
+      });
+      _message(tr('${valid.length} images selected for batch resize.', '${valid.length}টি ছবি Batch Resize-এর জন্য নেওয়া হয়েছে।'));
+    } catch (e) {
+      _message('${tr('Could not select images', 'ছবি নির্বাচন করা যায়নি')}: $e');
+    }
+  }
+
+  Future<void> _resizeBatch() async {
+    if (_batchSources.isEmpty || _busy) return;
+    final width = int.tryParse(_width.text.trim());
+    final height = int.tryParse(_height.text.trim());
+    if (width == null || height == null || width < 1 || height < 1 || width > 6000 || height > 6000) {
+      _message(tr('Enter valid dimensions first.', 'আগে সঠিক Width ও Height দিন।'));
+      return;
+    }
+    setState(() => _busy = true);
+    var saved = 0;
+    try {
+      final dir = await getTemporaryDirectory();
+      for (var i = 0; i < _batchSources.length; i++) {
+        final source = _batchSources[i];
+        final bytes = await source.readAsBytes();
+        final result = await compute(_resizeImageInBackground, <String, Object>{
+          'bytes': bytes,
+          'width': width,
+          'height': height,
+          'targetKb': _targetKb,
+          'keepRatio': _keepRatio,
+        });
+        final out = File(path.join(dir.path, 'RD_Batch_${DateTime.now().millisecondsSinceEpoch}_$i.jpg'));
+        await out.writeAsBytes(result, flush: true);
+        await Gal.putImage(out.path);
+        saved++;
+        if (mounted) _message(tr('Processed $saved of ${_batchSources.length} images...', '$saved / ${_batchSources.length}টি ছবি তৈরি হচ্ছে...'));
+      }
+      if (mounted) _message(tr('Batch complete: $saved images saved to Gallery.', 'Batch সম্পূর্ণ: $savedটি ছবি Gallery-তে সেভ হয়েছে।'));
+    } catch (e) {
+      if (mounted) _message('${tr('Batch resize stopped', 'Batch Resize বন্ধ হয়েছে')}: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _applyScale(int percent) async {
+    final file = _source;
+    if (file == null) return;
+    try {
+      final decoded = await compute(_decodeDimensions, await file.readAsBytes());
+      final w = (decoded.$1 * percent / 100).round().clamp(1, 6000);
+      final h = (decoded.$2 * percent / 100).round().clamp(1, 6000);
+      setState(() {
+        _width.text = '$w';
+        _height.text = '$h';
+        _scalePercent = percent;
+        _output = null;
+      });
+    } catch (e) {
+      _message('${tr('Could not calculate image dimensions', 'ছবির মাপ নির্ণয় করা যায়নি')}: $e');
     }
   }
 
@@ -696,6 +787,12 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                   ),
                   const SizedBox(height: 8),
                   OutlinedButton.icon(
+                    onPressed: _busy ? null : _pickMultiple,
+                    icon: const Icon(Icons.photo_library),
+                    label: Text(tr('Batch Select Photos', 'একসাথে অনেক ছবি নিন')),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
                     onPressed: _busy ? null : () => _pick(ImageSource.camera),
                     icon: const Icon(Icons.camera_alt_outlined),
                     label: Text(tr('Take a Photo', 'ক্যামেরায় ছবি তুলুন')),
@@ -703,6 +800,22 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 ],
               ),
             ),
+              if (_batchSources.length > 1) ...[
+                const SizedBox(height: 12),
+                _sectionCard(child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(tr('Batch selection: ${_batchSources.length} photos', 'একসাথে নির্বাচিত ছবি: ${_batchSources.length}টি'),
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    FilledButton.icon(
+                      onPressed: _busy ? null : _resizeBatch,
+                      icon: const Icon(Icons.photo_library_outlined),
+                      label: Text(tr('Resize & Save All', 'সব ছবি রিসাইজ করে সেভ করুন')),
+                    ),
+                  ],
+                )),
+              ],
             if (_source != null) ...[
               const SizedBox(height: 12),
               _sectionCard(
@@ -766,6 +879,26 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                         ),
                       ],
                     ),
+                    Text(tr('Dimension presets', 'ছবির মাপ বেছে নিন'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 6),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      [200, 200], [300, 300], [300, 400], [600, 800], [1200, 1600]
+                    ].map((size) => ActionChip(
+                      label: Text('${size[0]}×${size[1]}'),
+                      onPressed: _busy ? null : () => setState(() {
+                        _width.text = '${size[0]}';
+                        _height.text = '${size[1]}';
+                        _output = null;
+                      }),
+                    )).toList()),
+                    const SizedBox(height: 10),
+                    Text(tr('Resize by percentage', 'শতাংশ অনুযায়ী রিসাইজ'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Wrap(spacing: 6, children: [25, 50, 75, 100].map((p) => ChoiceChip(
+                      label: Text('$p%'),
+                      selected: _scalePercent == p,
+                      onSelected: _busy ? null : (_) => _applyScale(p),
+                    )).toList()),
+                    const SizedBox(height: 8),
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
                       title: Text(tr('Keep aspect ratio', 'ছবির অনুপাত ঠিক রাখুন')),
