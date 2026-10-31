@@ -43,7 +43,7 @@ jobs:
       - name: Publish APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-v1.0.8
-          name: RD Photo & Signature Resizer v1.0.8
+          tag_name: apk-v1.0.9
+          name: RD Photo & Signature Resizer v1.0.9
           generate_release_notes: true
           files: build/app/outputs/flutter-apk/app-release.apk
