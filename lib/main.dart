@@ -27,48 +27,88 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final decoded = img.decodeImage(sourceBytes);
   if (decoded == null) throw Exception('Unsupported image format');
   final oriented = img.bakeOrientation(decoded);
+  final ratio = oriented.width / oriented.height;
 
-  var width = requestedWidth;
-  var height = requestedHeight;
+  var baseWidth = requestedWidth;
+  var baseHeight = requestedHeight;
   if (keepRatio) {
-    final ratio = oriented.width / oriented.height;
-    if (width / height > ratio) {
-      width = (height * ratio).round().clamp(1, 6000);
+    if (baseWidth / baseHeight > ratio) {
+      baseWidth = (baseHeight * ratio).round().clamp(1, 6000);
     } else {
-      height = (width / ratio).round().clamp(1, 6000);
+      baseHeight = (baseWidth / ratio).round().clamp(1, 6000);
     }
   }
 
-  var working = img.copyResize(
+  final targetBytes = targetKb * 1024;
+  Uint8List? best;
+  var bestDistance = 1 << 62;
+
+  // Search multiple resolutions and JPEG qualities. Prefer the largest file
+  // that does not exceed the requested target, rather than stopping at an
+  // arbitrary low quality or shrinking the image repeatedly.
+  final scales = <double>[
+    0.50, 0.60, 0.70, 0.80, 0.90, 1.00,
+    1.10, 1.20, 1.30, 1.40, 1.50, 1.65, 1.80,
+    2.00, 2.20, 2.40, 2.70, 3.00
+  ];
+
+  for (final scale in scales) {
+    final width = (baseWidth * scale).round().clamp(1, 6000);
+    final height = (baseHeight * scale).round().clamp(1, 6000);
+    if (width == 1 || height == 1) continue;
+    final working = img.copyResize(
+      oriented,
+      width: width,
+      height: height,
+      interpolation: img.Interpolation.average,
+    );
+
+    var low = 20;
+    var high = 100;
+    for (var i = 0; i < 7; i++) {
+      final quality = (low + high) ~/ 2;
+      final candidate = Uint8List.fromList(
+        img.encodeJpg(working, quality: quality),
+      );
+      final distance = (targetBytes - candidate.length).abs();
+      if (candidate.length <= targetBytes && distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+      if (candidate.length > targetBytes) {
+        high = quality - 1;
+      } else {
+        low = quality + 1;
+      }
+    }
+
+    // Also test endpoints so the search does not miss a better candidate.
+    for (final quality in [20, 35, 50, 65, 80, 90, 95, 100]) {
+      final candidate = Uint8List.fromList(
+        img.encodeJpg(working, quality: quality),
+      );
+      final distance = (targetBytes - candidate.length).abs();
+      if (candidate.length <= targetBytes && distance < bestDistance) {
+        best = candidate;
+        bestDistance = distance;
+      }
+    }
+
+    if (best != null && best.length >= targetBytes * 0.985) break;
+  }
+
+  if (best != null) return best;
+
+  // If even the smallest sensible JPEG is larger than the target, return
+  // the smallest valid result; callers display its actual size.
+  final smallest = img.copyResize(
     oriented,
-    width: width,
-    height: height,
+    width: (baseWidth * 0.5).round().clamp(1, 6000),
+    height: (baseHeight * 0.5).round().clamp(1, 6000),
     interpolation: img.Interpolation.average,
   );
-  final maxBytes = targetKb * 1024;
-  var quality = 90;
-  var bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
-
-  for (var attempt = 0; bytes.length > maxBytes && attempt < 36; attempt++) {
-    if (quality > 35) {
-      quality = (quality - 5).clamp(35, 90);
-    } else {
-      quality = 75;
-      final nextWidth = (working.width * 0.9).round().clamp(1, 6000);
-      final nextHeight = (working.height * 0.9).round().clamp(1, 6000);
-      if (nextWidth == working.width && nextHeight == working.height) break;
-      working = img.copyResize(
-        working,
-        width: nextWidth,
-        height: nextHeight,
-        interpolation: img.Interpolation.average,
-      );
-    }
-    bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
-  }
-  return bytes;
+  return Uint8List.fromList(img.encodeJpg(smallest, quality: 20));
 }
-
 
 
 Future<void> main() async {
@@ -346,7 +386,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.11')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.12')),
             ]),
           ),
           actions: [
@@ -579,7 +619,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.11', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.12', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
@@ -590,7 +630,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 ListTile(leading: const Icon(Icons.play_circle_fill, color: Colors.white), title: const Text('Govt Job with RD', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('https://youtube.com/@govtjobwithrd'); }),
                 const Padding(padding: EdgeInsets.fromLTRB(22, 24, 18, 10), child: Text('ABOUT', style: TextStyle(color: Colors.white70))),
                 ListTile(leading: const Icon(Icons.system_update, color: Colors.white), title: const Text('Check for updates', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _updateCheckStarted = false; _checkForUpdate(showUpToDate: true); }),
-                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.11', style: TextStyle(color: Colors.white))),
+                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.12', style: TextStyle(color: Colors.white))),
               ],
             ),
           ),
