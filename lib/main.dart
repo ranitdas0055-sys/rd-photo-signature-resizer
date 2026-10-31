@@ -75,7 +75,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
       setState(() {
         _width.text = '${prefs.getInt('defaultWidth') ?? 600}';
         _height.text = '${prefs.getInt('defaultHeight') ?? 800}';
-        _targetKb = (prefs.getInt('targetKb') ?? 100).clamp(20, 2048);
+        _targetKb = (prefs.getInt('targetKb') ?? 100).clamp(10, 2048);
         _keepRatio = prefs.getBool('keepRatio') ?? true;
         _bengali = prefs.getBool('bengali') ?? false;
       });
@@ -198,7 +198,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 decoration: const InputDecoration(labelText: 'Default Height (px)', border: OutlineInputBorder())),
               const SizedBox(height: 10),
               TextField(controller: sizeController, keyboardType: TextInputType.number,
-                decoration: const InputDecoration(labelText: 'Target size (KB)', helperText: '20–2048 KB (up to 2 MB)', border: OutlineInputBorder())),
+                decoration: const InputDecoration(labelText: 'Target size (KB)', helperText: '10–2048 KB (up to 2 MB)', border: OutlineInputBorder())),
               SwitchListTile(contentPadding: EdgeInsets.zero, title: Text(tr('Keep aspect ratio', 'ছবির অনুপাত ঠিক রাখুন')),
                 value: keepRatio, onChanged: (v) => setDialogState(() => keepRatio = v)),
               SwitchListTile(contentPadding: EdgeInsets.zero, title: const Text('বাংলা ভাষা / Bengali'),
@@ -217,8 +217,8 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
               final w = int.tryParse(widthController.text.trim());
               final h = int.tryParse(heightController.text.trim());
               final kb = int.tryParse(sizeController.text.trim());
-              if (w == null || h == null || kb == null || w < 1 || h < 1 || w > 6000 || h > 6000 || kb < 20 || kb > 2048) {
-                _message('Enter valid dimensions (1–6000 px) and size (20–2048 KB).');
+              if (w == null || h == null || kb == null || w < 1 || h < 1 || w > 6000 || h > 6000 || kb < 10 || kb > 2048) {
+                _message('Enter valid dimensions (1–6000 px) and size (10–2048 KB).');
                 return;
               }
               setState(() {
@@ -276,7 +276,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(
                     labelText: tr('Target size (KB)', 'লক্ষ্য সাইজ (KB)'),
-                    helperText: tr('20 to 2048 KB (up to 2 MB)', '২০ থেকে ২০৪৮ KB (সর্বোচ্চ ২ MB)'),
+                    helperText: tr('10 to 2048 KB (up to 2 MB)', '১০ থেকে ২০৪৮ KB (সর্বোচ্চ ২ MB)'),
                     border: const OutlineInputBorder(),
                   ),
                 ),
@@ -301,9 +301,9 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 final kb = int.tryParse(sizeController.text.trim());
                 if (w == null || h == null || kb == null ||
                     w < 1 || h < 1 || w > 6000 || h > 6000 ||
-                    kb < 20 || kb > 2048) {
+                    kb < 10 || kb > 2048) {
                   _message(tr(
-                    'Enter width and height from 1–6000 px and size from 20–2048 KB.',
+                    'Enter width and height from 1–6000 px and size from 10–2048 KB.',
                     'Width ও Height ১–৬০০০ px এবং সাইজ ২০–২০৪৮ KB দিন।',
                   ));
                   return;
@@ -634,7 +634,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     ),
                     Slider(
                       value: _targetKb.toDouble(),
-                      min: 20,
+                      min: 10,
                       max: 2048,
                       divisions: 99,
                       label: _targetKb >= 1024
@@ -644,7 +644,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     ),
                     Wrap(
                       spacing: 6,
-                      children: [20, 50, 100, 200, 500, 1024, 2048]
+                      children: [10, 20, 50, 100, 200, 500, 1024, 2048]
                           .map((size) => ChoiceChip(
                                 label: Text(size >= 1024 ? '${size ~/ 1024} MB' : '$size KB'),
                                 selected: _targetKb == size,
