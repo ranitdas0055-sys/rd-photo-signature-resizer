@@ -232,7 +232,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
           barrierDismissible: false,
           builder: (ctx) => AlertDialog(
             title: Text(tr('Update available', 'নতুন আপডেট পাওয়া গেছে')),
-            content: Text(tr('Version $tag is available. Your version is ${info.version}. Download the latest APK to update.', 'নতুন Version $tag পাওয়া গেছে। আপনার Version ${info.version}। নতুন APK ডাউনলোড করে আপডেট করুন।')),
+            content: Text(tr('Version $tag is available. Your version is ${info.version}. Download and install the latest APK to update.', 'নতুন Version $tag পাওয়া গেছে। আপনার Version ${info.version}। নতুন APK ডাউনলোড করে ইনস্টল করুন।')),
             actions: [
               TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Later', 'পরে'))),
               FilledButton(onPressed: () {
@@ -477,7 +477,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.12')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.13')),
             ]),
           ),
           actions: [
@@ -710,7 +710,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.12', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.13', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
@@ -721,7 +721,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 ListTile(leading: const Icon(Icons.play_circle_fill, color: Colors.white), title: const Text('Govt Job with RD', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('https://youtube.com/@govtjobwithrd'); }),
                 const Padding(padding: EdgeInsets.fromLTRB(22, 24, 18, 10), child: Text('ABOUT', style: TextStyle(color: Colors.white70))),
                 ListTile(leading: const Icon(Icons.system_update, color: Colors.white), title: const Text('Check for updates', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _updateCheckStarted = false; _checkForUpdate(showUpToDate: true); }),
-                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.12', style: TextStyle(color: Colors.white))),
+                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.13', style: TextStyle(color: Colors.white))),
               ],
             ),
           ),
