@@ -77,14 +77,18 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final limit = targetKb * 1024;
   Uint8List? best;
   var bestGap = 1 << 62;
-  final scales = <double>[0.35,0.45,0.55,0.65,0.75,0.85,0.95,1.0,1.1,1.25,1.4,1.6,1.8,2.0,2.3,2.6,3.0,3.5,4.0];
+  // Limit the number of JPEG encodes so large photos resize faster.
+  // Search a compact set of dimensions and quality levels, keeping the
+  // closest result that does not exceed the requested KB size.
+  final scales = <double>[0.45, 0.60, 0.75, 0.90, 1.0, 1.15, 1.35, 1.65, 2.0];
+  const qualities = <int>[35, 50, 65, 78, 88, 96, 100];
   for (final scale in scales) {
-    final w = (base.width * scale).round().clamp(1,6000);
-    final h = (base.height * scale).round().clamp(1,6000);
+    final w = (base.width * scale).round().clamp(1, 6000);
+    final h = (base.height * scale).round().clamp(1, 6000);
     final working = (w == base.width && h == base.height)
-      ? base
-      : img.copyResize(base, width: w, height: h, interpolation: img.Interpolation.average);
-    for (final quality in [25,35,45,55,65,72,78,84,90,94,97,100]) {
+        ? base
+        : img.copyResize(base, width: w, height: h, interpolation: img.Interpolation.average);
+    for (final quality in qualities) {
       final bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
       if (bytes.length <= limit) {
         final gap = limit - bytes.length;
@@ -267,22 +271,30 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   }
 
   Future<void> _shareAppApk() async {
+    if (_busy) return;
+    setState(() => _busy = true);
     try {
-      _message(tr('Downloading APK for sharing...', 'শেয়ার করার জন্য APK ডাউনলোড হচ্ছে...'));
-      final request = http.Request('GET', Uri.parse('https://github.com/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest/download/app-release.apk'));
-      final streamed = await http.Client().send(request).timeout(const Duration(minutes: 3));
-      if (streamed.statusCode != 200) throw Exception('APK download failed (${streamed.statusCode})');
+      _message(tr('Preparing APK file to share...', 'শেয়ার করার জন্য APK ফাইল তৈরি হচ্ছে...'));
+      final uri = Uri.parse(
+        'https://github.com/ranitdas0055-sys/rd-photo-signature-resizer/releases/download/apk-v1.0.18/app-release.apk',
+      );
+      final response = await http.get(uri).timeout(const Duration(minutes: 5));
+      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
+        throw Exception('APK download failed (${response.statusCode})');
+      }
       final dir = await getTemporaryDirectory();
-      final apkFile = File(path.join(dir.path, 'RD-Photo-Resizer.apk'));
-      final sink = apkFile.openWrite();
-      await streamed.stream.pipe(sink);
+      final apkFile = File(path.join(dir.path, 'RD-Photo-Signature-Resizer.apk'));
+      await apkFile.writeAsBytes(response.bodyBytes, flush: true);
       if (!mounted) return;
+      setState(() => _busy = false);
       await Share.shareXFiles(
-        [XFile(apkFile.path, mimeType: 'application/vnd.android.package-archive')],
+        [XFile(apkFile.path, mimeType: 'application/vnd.android.package-archive', name: 'RD-Photo-Signature-Resizer.apk')],
         text: 'RD Photo & Signature Resizer APK',
       );
     } catch (e) {
       _message('${tr('Could not share APK', 'APK শেয়ার করা যায়নি')}: $e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -495,7 +507,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.17')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.18')),
             ]),
           ),
           actions: [
@@ -730,7 +742,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.17', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.18', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
