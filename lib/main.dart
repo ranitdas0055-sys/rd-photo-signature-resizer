@@ -13,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const Color brandBlue = Color(0xFF1769AA);
 
@@ -187,7 +188,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
               TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Later', 'পরে'))),
               FilledButton(onPressed: () {
                 Navigator.pop(ctx);
-                Share.share('RD Photo & Signature Resizer update $tag: $url');
+                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
               }, child: Text(tr('Get update', 'আপডেট নিন'))),
             ],
           ),
