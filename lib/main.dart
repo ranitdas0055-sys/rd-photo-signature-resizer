@@ -36,9 +36,41 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final oriented = img.bakeOrientation(decoded);
   final format = (args['format'] ?? 'jpg').toString();
   final ratio = oriented.width / oriented.height;
+  final fitMode = (args['fitMode'] ?? 'crop').toString();
 
   var baseWidth = requestedWidth;
   var baseHeight = requestedHeight;
+  if (fitMode == 'crop' || fitMode == 'pad') {
+    final targetRatio = baseWidth / baseHeight;
+    if (fitMode == 'crop') {
+      if (ratio > targetRatio) {
+        final cropWidth = (oriented.height * targetRatio).round().clamp(1, oriented.width);
+        final left = (oriented.width - cropWidth) ~/ 2;
+        final cropped = img.copyCrop(oriented, x: left, y: 0, width: cropWidth, height: oriented.height);
+        final resized = img.copyResize(cropped, width: baseWidth, height: baseHeight, interpolation: img.Interpolation.average);
+        if (format == 'png') return Uint8List.fromList(img.encodePng(resized));
+        if (format == 'webp') return Uint8List.fromList(img.encodeWebP(resized, quality: 85));
+        return Uint8List.fromList(img.encodeJpg(resized, quality: 90));
+      } else {
+        final cropHeight = (oriented.width / targetRatio).round().clamp(1, oriented.height);
+        final top = (oriented.height - cropHeight) ~/ 2;
+        final cropped = img.copyCrop(oriented, x: 0, y: top, width: oriented.width, height: cropHeight);
+        final resized = img.copyResize(cropped, width: baseWidth, height: baseHeight, interpolation: img.Interpolation.average);
+        if (format == 'png') return Uint8List.fromList(img.encodePng(resized));
+        if (format == 'webp') return Uint8List.fromList(img.encodeWebP(resized, quality: 85));
+        return Uint8List.fromList(img.encodeJpg(resized, quality: 90));
+      }
+    } else {
+      final scale = (baseWidth / oriented.width < baseHeight / oriented.height) ? baseWidth / oriented.width : baseHeight / oriented.height;
+      final fit = img.copyResize(oriented, width: (oriented.width * scale).round(), height: (oriented.height * scale).round(), interpolation: img.Interpolation.average);
+      final canvas = img.Image(width: baseWidth, height: baseHeight, numChannels: 4);
+      img.fill(canvas, color: img.ColorRgba8(255, 255, 255, 255));
+      img.compositeImage(canvas, fit, dstX: (baseWidth-fit.width) ~/ 2, dstY: (baseHeight-fit.height) ~/ 2);
+      if (format == 'png') return Uint8List.fromList(img.encodePng(canvas));
+      if (format == 'webp') return Uint8List.fromList(img.encodeWebP(canvas, quality: 85));
+      return Uint8List.fromList(img.encodeJpg(canvas, quality: 90));
+    }
+  }
   if (keepRatio) {
     if (baseWidth / baseHeight > ratio) {
       baseWidth = (baseHeight * ratio).round().clamp(1, 6000);
@@ -174,6 +206,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   bool _updateCheckStarted = false;
   int _scalePercent = 100;
   String _outputFormat = 'jpg';
+  String _fitMode = 'crop';
   final List<File> _batchSources = [];
 
   @override
@@ -633,6 +666,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
         'targetKb': _targetKb,
         'keepRatio': _keepRatio,
         'format': _outputFormat,
+        'fitMode': _fitMode,
       });
 
       if (!mounted) return;
@@ -914,6 +948,18 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     ),
                     const SizedBox(height: 8),
                     DropdownButtonFormField<String>(
+                      initialValue: _fitMode,
+                      decoration: InputDecoration(labelText: tr('Square / ratio fit', 'স্কয়ার / অনুপাত ফিট'), border: const OutlineInputBorder()),
+                      items: [
+                        DropdownMenuItem(value: 'crop', child: Text(tr('Crop to fill', 'ক্রপ করে পূরণ')),
+                        ),
+                        DropdownMenuItem(value: 'pad', child: Text(tr('Fit with white padding', 'সাদা জায়গা রেখে ফিট'))),
+                        DropdownMenuItem(value: 'none', child: Text(tr('Normal resize', 'সাধারণ রিসাইজ'))),
+                      ],
+                      onChanged: (value) => setState(() { _fitMode = value ?? 'crop'; _output = null; }),
+                    ),
+                    const SizedBox(height: 8),
+                    DropdownButtonFormField<String>(
                       initialValue: _outputFormat,
                       decoration: InputDecoration(labelText: tr('Output format', 'আউটপুট ফরম্যাট'), border: const OutlineInputBorder()),
                       items: const [
@@ -935,7 +981,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                         final rw = item[1] as int;
                         final rh = item[2] as int;
                         final scale = (w / rw < h / rh) ? w / rw : h / rh;
-                        setState(() { _width.text = (rw * scale).round().toString(); _height.text = (rh * scale).round().toString(); _keepRatio = false; _output = null; });
+                        setState(() { _width.text = (rw * scale).round().toString(); _height.text = (rh * scale).round().toString(); _keepRatio = false; _fitMode = 'crop'; _output = null; });
                       },
                     )).toList()),
                     Text(
