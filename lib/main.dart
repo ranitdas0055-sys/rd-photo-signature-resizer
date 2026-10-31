@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -10,6 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'package:package_info_plus/package_info_plus.dart';
 
 const Color brandBlue = Color(0xFF1769AA);
 
@@ -115,11 +118,13 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   bool _keepRatio = true;
   bool _bengali = false;
   bool _busy = false;
+  bool _updateCheckStarted = false;
 
   @override
   void initState() {
     super.initState();
     _loadPreferences();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForUpdate());
   }
 
   Future<void> _loadPreferences() async {
@@ -134,6 +139,84 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
         _bengali = prefs.getBool('bengali') ?? false;
       });
     } catch (_) {
+    }
+  }
+
+
+  Future<void> _checkForUpdate({bool showUpToDate = false}) async {
+    if (_updateCheckStarted) return;
+    _updateCheckStarted = true;
+    try {
+      final response = await http.get(
+        Uri.parse('https://api.github.com/repos/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest'),
+        headers: {'Accept': 'application/vnd.github+json'},
+      ).timeout(const Duration(seconds: 12));
+      if (response.statusCode != 200) {
+        if (showUpToDate) _message(tr('Could not check for updates.', 'আপডেট চেক করা যায়নি।'));
+        return;
+      }
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final tag = (data['tag_name'] ?? '').toString().replaceFirst('apk-', '').replaceFirst('v', '');
+      final info = await PackageInfo.fromPlatform();
+      int compareVersion(String a, String b) {
+        final aa = a.split('.').map((x) => int.tryParse(x) ?? 0).toList();
+        final bb = b.split('.').map((x) => int.tryParse(x) ?? 0).toList();
+        for (var i = 0; i < 3; i++) {
+          final av = i < aa.length ? aa[i] : 0;
+          final bv = i < bb.length ? bb[i] : 0;
+          if (av != bv) return av.compareTo(bv);
+        }
+        return 0;
+      }
+      if (compareVersion(tag, info.version) > 0 && mounted) {
+        final assets = (data['assets'] as List<dynamic>? ?? []);
+        String url = 'https://github.com/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest';
+        for (final item in assets) {
+          if (item is Map && item['name'] == 'app-release.apk') {
+            url = item['browser_download_url']?.toString() ?? url;
+            break;
+          }
+        }
+        showDialog<void>(
+          context: context,
+          barrierDismissible: false,
+          builder: (ctx) => AlertDialog(
+            title: Text(tr('Update available', 'নতুন আপডেট পাওয়া গেছে')),
+            content: Text(tr('Version $tag is available. Your version is ${info.version}. Download the latest APK to update.', 'নতুন Version $tag পাওয়া গেছে। আপনার Version ${info.version}। নতুন APK ডাউনলোড করে আপডেট করুন।')),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: Text(tr('Later', 'পরে'))),
+              FilledButton(onPressed: () {
+                Navigator.pop(ctx);
+                Share.share('RD Photo & Signature Resizer update $tag: $url');
+              }, child: Text(tr('Get update', 'আপডেট নিন'))),
+            ],
+          ),
+        );
+      } else if (showUpToDate && mounted) {
+        _message(tr('You are using the latest version.', 'আপনি সর্বশেষ Version ব্যবহার করছেন।'));
+      }
+    } catch (_) {
+      if (showUpToDate) _message(tr('Update check failed. Check your internet.', 'আপডেট চেক হয়নি। ইন্টারনেট দেখুন।'));
+    }
+  }
+
+  Future<void> _shareAppApk() async {
+    try {
+      _message(tr('Downloading APK for sharing...', 'শেয়ার করার জন্য APK ডাউনলোড হচ্ছে...'));
+      final request = http.Request('GET', Uri.parse('https://github.com/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest/download/app-release.apk'));
+      final streamed = await http.Client().send(request).timeout(const Duration(minutes: 3));
+      if (streamed.statusCode != 200) throw Exception('APK download failed (${streamed.statusCode})');
+      final dir = await getTemporaryDirectory();
+      final apkFile = File(path.join(dir.path, 'RD-Photo-Resizer.apk'));
+      final sink = apkFile.openWrite();
+      await streamed.stream.pipe(sink);
+      if (!mounted) return;
+      await Share.shareXFiles(
+        [XFile(apkFile.path, mimeType: 'application/vnd.android.package-archive')],
+        text: 'RD Photo & Signature Resizer APK',
+      );
+    } catch (e) {
+      _message('${tr('Could not share APK', 'APK শেয়ার করা যায়নি')}: $e');
     }
   }
 
@@ -262,7 +345,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.10')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.11')),
             ]),
           ),
           actions: [
@@ -495,17 +578,18 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.10', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.11', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
                 ListTile(leading: const Icon(Icons.tune, color: Colors.white), title: Text(tr('Custom Resize', 'কাস্টম রিসাইজ'), style: const TextStyle(color: Colors.white)), onTap: () => Navigator.pop(context)),
                 ListTile(leading: const Icon(Icons.settings, color: Colors.white), title: Text(tr('Settings', 'সেটিংস'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _openSettings(); }),
                 ListTile(leading: const Icon(Icons.help_outline, color: Colors.white), title: Text(tr('Help', 'সাহায্য'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _message(tr('Choose a photo, enter your own width and height in pixels, then tap Custom Resize.', 'ছবি বেছে নিজের মতো Width ও Height দিন, তারপর Custom Resize চাপুন।')); }),
-                ListTile(leading: const Icon(Icons.share, color: Colors.white), title: Text(tr('Share app', 'অ্যাপ শেয়ার'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('RD Photo & Signature Resizer v1.0.10\\nDownload APK: https://github.com/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest'); }),
+                ListTile(leading: const Icon(Icons.share, color: Colors.white), title: Text(tr('Share app', 'অ্যাপ শেয়ার'), style: const TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _shareAppApk(); }),
                 ListTile(leading: const Icon(Icons.play_circle_fill, color: Colors.white), title: const Text('Govt Job with RD', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('https://youtube.com/@govtjobwithrd'); }),
                 const Padding(padding: EdgeInsets.fromLTRB(22, 24, 18, 10), child: Text('ABOUT', style: TextStyle(color: Colors.white70))),
-                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.10', style: TextStyle(color: Colors.white))),
+                ListTile(leading: const Icon(Icons.system_update, color: Colors.white), title: const Text('Check for updates', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _updateCheckStarted = false; _checkForUpdate(showUpToDate: true); }),
+                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.11', style: TextStyle(color: Colors.white))),
               ],
             ),
           ),
