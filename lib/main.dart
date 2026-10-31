@@ -30,130 +30,78 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final requestedHeight = args['height'] as int;
   final targetKb = args['targetKb'] as int;
   final keepRatio = args['keepRatio'] as bool;
-
   final decoded = img.decodeImage(sourceBytes);
   if (decoded == null) throw Exception('Unsupported image format');
-  final oriented = img.bakeOrientation(decoded);
+  final source = img.bakeOrientation(decoded);
   final format = (args['format'] ?? 'jpg').toString();
-  final ratio = oriented.width / oriented.height;
-  final fitMode = (args['fitMode'] ?? 'crop').toString();
+  final fitMode = (args['fitMode'] ?? 'none').toString();
+  final ratio = source.width / source.height;
+  var width = requestedWidth;
+  var height = requestedHeight;
+  late img.Image base;
 
-  var baseWidth = requestedWidth;
-  var baseHeight = requestedHeight;
-  if (fitMode == 'crop' || fitMode == 'pad') {
-    final targetRatio = baseWidth / baseHeight;
-    if (fitMode == 'crop') {
-      if (ratio > targetRatio) {
-        final cropWidth = (oriented.height * targetRatio).round().clamp(1, oriented.width);
-        final left = (oriented.width - cropWidth) ~/ 2;
-        final cropped = img.copyCrop(oriented, x: left, y: 0, width: cropWidth, height: oriented.height);
-        final resized = img.copyResize(cropped, width: baseWidth, height: baseHeight, interpolation: img.Interpolation.average);
-        if (format == 'png') return Uint8List.fromList(img.encodePng(resized));
-        if (format == 'webp') return Uint8List.fromList(img.encodeWebP(resized, quality: 85));
-        return Uint8List.fromList(img.encodeJpg(resized, quality: 90));
+  if (fitMode == 'crop') {
+    final targetRatio = width / height;
+    img.Image cropped;
+    if (ratio > targetRatio) {
+      final cw = (source.height * targetRatio).round().clamp(1, source.width);
+      cropped = img.copyCrop(source, x: (source.width-cw) ~/ 2, y: 0, width: cw, height: source.height);
+    } else {
+      final ch = (source.width / targetRatio).round().clamp(1, source.height);
+      cropped = img.copyCrop(source, x: 0, y: (source.height-ch) ~/ 2, width: source.width, height: ch);
+    }
+    base = img.copyResize(cropped, width: width, height: height, interpolation: img.Interpolation.average);
+  } else if (fitMode == 'pad') {
+    final scale = (width / source.width < height / source.height) ? width / source.width : height / source.height;
+    final fitted = img.copyResize(source,
+      width: (source.width*scale).round().clamp(1,width),
+      height: (source.height*scale).round().clamp(1,height),
+      interpolation: img.Interpolation.average);
+    base = img.Image(width: width, height: height, numChannels: 3);
+    img.fill(base, color: img.ColorRgb8(255,255,255));
+    img.compositeImage(base, fitted, dstX: (width-fitted.width) ~/ 2, dstY: (height-fitted.height) ~/ 2);
+  } else {
+    if (keepRatio) {
+      if (width / height > ratio) {
+        width = (height * ratio).round().clamp(1,6000);
       } else {
-        final cropHeight = (oriented.width / targetRatio).round().clamp(1, oriented.height);
-        final top = (oriented.height - cropHeight) ~/ 2;
-        final cropped = img.copyCrop(oriented, x: 0, y: top, width: oriented.width, height: cropHeight);
-        final resized = img.copyResize(cropped, width: baseWidth, height: baseHeight, interpolation: img.Interpolation.average);
-        if (format == 'png') return Uint8List.fromList(img.encodePng(resized));
-        if (format == 'webp') return Uint8List.fromList(img.encodeWebP(resized, quality: 85));
-        return Uint8List.fromList(img.encodeJpg(resized, quality: 90));
+        height = (width / ratio).round().clamp(1,6000);
       }
-    } else {
-      final scale = (baseWidth / oriented.width < baseHeight / oriented.height) ? baseWidth / oriented.width : baseHeight / oriented.height;
-      final fit = img.copyResize(oriented, width: (oriented.width * scale).round(), height: (oriented.height * scale).round(), interpolation: img.Interpolation.average);
-      final canvas = img.Image(width: baseWidth, height: baseHeight, numChannels: 4);
-      img.fill(canvas, color: img.ColorRgba8(255, 255, 255, 255));
-      img.compositeImage(canvas, fit, dstX: (baseWidth-fit.width) ~/ 2, dstY: (baseHeight-fit.height) ~/ 2);
-      if (format == 'png') return Uint8List.fromList(img.encodePng(canvas));
-      if (format == 'webp') return Uint8List.fromList(img.encodeWebP(canvas, quality: 85));
-      return Uint8List.fromList(img.encodeJpg(canvas, quality: 90));
     }
-  }
-  if (keepRatio) {
-    if (baseWidth / baseHeight > ratio) {
-      baseWidth = (baseHeight * ratio).round().clamp(1, 6000);
-    } else {
-      baseHeight = (baseWidth / ratio).round().clamp(1, 6000);
-    }
+    base = img.copyResize(source, width: width, height: height, interpolation: img.Interpolation.average);
   }
 
-  if (format == 'png' || format == 'webp') {
-    final resized = img.copyResize(oriented, width: baseWidth, height: baseHeight, interpolation: img.Interpolation.average);
-    return Uint8List.fromList(format == 'png' ? img.encodePng(resized) : img.encodeWebP(resized, quality: 85));
-  }
-  final targetBytes = targetKb * 1024;
+  if (format == 'png') return Uint8List.fromList(img.encodePng(base));
+  if (format == 'webp') return Uint8List.fromList(img.encodeWebP(base, quality: 85));
+
+  final limit = targetKb * 1024;
   Uint8List? best;
-  var bestDistance = 1 << 62;
-
-  // Search multiple resolutions and JPEG qualities. Prefer the largest file
-  // that does not exceed the requested target, rather than stopping at an
-  // arbitrary low quality or shrinking the image repeatedly.
-  final scales = <double>[
-    0.50, 0.60, 0.70, 0.80, 0.90, 1.00,
-    1.10, 1.20, 1.30, 1.40, 1.50, 1.65, 1.80,
-    2.00, 2.20, 2.40, 2.70, 3.00
-  ];
-
+  var bestGap = 1 << 62;
+  final scales = <double>[0.35,0.45,0.55,0.65,0.75,0.85,0.95,1.0,1.1,1.25,1.4,1.6,1.8,2.0,2.3,2.6,3.0,3.5,4.0];
   for (final scale in scales) {
-    final width = (baseWidth * scale).round().clamp(1, 6000);
-    final height = (baseHeight * scale).round().clamp(1, 6000);
-    if (width == 1 || height == 1) continue;
-    final working = img.copyResize(
-      oriented,
-      width: width,
-      height: height,
-      interpolation: img.Interpolation.average,
-    );
-
-    var low = 20;
-    var high = 100;
-    for (var i = 0; i < 7; i++) {
-      final quality = (low + high) ~/ 2;
-      final candidate = Uint8List.fromList(
-        img.encodeJpg(working, quality: quality),
-      );
-      final distance = (targetBytes - candidate.length).abs();
-      if (candidate.length <= targetBytes && distance < bestDistance) {
-        best = candidate;
-        bestDistance = distance;
-      }
-      if (candidate.length > targetBytes) {
-        high = quality - 1;
-      } else {
-        low = quality + 1;
+    final w = (base.width * scale).round().clamp(1,6000);
+    final h = (base.height * scale).round().clamp(1,6000);
+    final working = (w == base.width && h == base.height)
+      ? base
+      : img.copyResize(base, width: w, height: h, interpolation: img.Interpolation.average);
+    for (final quality in [25,35,45,55,65,72,78,84,90,94,97,100]) {
+      final bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
+      if (bytes.length <= limit) {
+        final gap = limit - bytes.length;
+        if (gap < bestGap) {
+          best = bytes;
+          bestGap = gap;
+        }
       }
     }
-
-    // Also test endpoints so the search does not miss a better candidate.
-    for (final quality in [20, 35, 50, 65, 80, 90, 95, 100]) {
-      final candidate = Uint8List.fromList(
-        img.encodeJpg(working, quality: quality),
-      );
-      final distance = (targetBytes - candidate.length).abs();
-      if (candidate.length <= targetBytes && distance < bestDistance) {
-        best = candidate;
-        bestDistance = distance;
-      }
-    }
-
-    if (best != null && best.length >= targetBytes * 0.985) break;
+    if (best != null && bestGap <= limit * 0.01) break;
   }
-
   if (best != null) return best;
-
-  // If even the smallest sensible JPEG is larger than the target, return
-  // the smallest valid result; callers display its actual size.
-  final smallest = img.copyResize(
-    oriented,
-    width: (baseWidth * 0.5).round().clamp(1, 6000),
-    height: (baseHeight * 0.5).round().clamp(1, 6000),
-    interpolation: img.Interpolation.average,
-  );
+  final smallest = img.copyResize(base,
+    width: (base.width*0.35).round().clamp(1,6000),
+    height: (base.height*0.35).round().clamp(1,6000));
   return Uint8List.fromList(img.encodeJpg(smallest, quality: 20));
 }
-
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -547,7 +495,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.16')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.17')),
             ]),
           ),
           actions: [
@@ -782,7 +730,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.16', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.17', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
@@ -1016,9 +964,26 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                       },
                     )).toList()),
                     Text(
-                      tr('Target file size: $_targetKb KB', 'লক্ষ্য ফাইল সাইজ: $_targetKb KB'),
+                      tr('Target file size (KB)', 'লক্ষ্য ফাইল সাইজ (KB)'),
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
+                    TextFormField(
+                      key: ValueKey(_targetKb),
+                      initialValue: '$_targetKb',
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        border: const OutlineInputBorder(),
+                        suffixText: 'KB',
+                        helperText: tr('JPG tries to reach the closest size below your target.', 'JPG ছবিকে লক্ষ্য সাইজের ঠিক নিচে যতটা সম্ভব কাছাকাছি রাখার চেষ্টা করবে।'),
+                      ),
+                      onChanged: (value) {
+                        final kb = int.tryParse(value.trim());
+                        if (kb != null && kb >= 10 && kb <= 2048) {
+                          setState(() { _targetKb = kb; _output = null; });
+                        }
+                      },
+                    ),
+                    const SizedBox(height: 8),
                     Slider(
                       value: _targetKb.toDouble(),
                       min: 10,
