@@ -1,7 +1,7 @@
 name: rd_photo_signature_resizer
 description: RD Photo & Signature Resizer - simple offline photo and signature utility.
 publish_to: "none"
-version: 1.0.18+19
+version: 1.0.19+20
 environment:
   sdk: ">=3.3.0 <4.0.0"
 dependencies:
@@ -19,6 +19,7 @@ dependencies:
   package_info_plus: ^8.0.2
   url_launcher: ^6.3.0
   open_filex: ^4.7.0
+  file_picker: ^8.1.7
 dev_dependencies:
   flutter_test:
     sdk: flutter
