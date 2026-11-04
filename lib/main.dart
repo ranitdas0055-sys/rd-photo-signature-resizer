@@ -274,10 +274,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   }
 
   Future<void> _shareAppApk() async {
-    if (_busy) return;
-    setState(() => _busy = true);
     try {
-      _message(tr('Finding latest APK...', 'সর্বশেষ APK খোঁজা হচ্ছে...'));
       final latest = await http.get(
         Uri.parse('https://api.github.com/repos/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest'),
         headers: {'Accept': 'application/vnd.github+json'},
@@ -291,29 +288,26 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
       );
       final url = apk['browser_download_url']?.toString();
       if (url == null || url.isEmpty) throw Exception('APK file not found in latest release');
-      _message(tr('Downloading APK for sharing...', 'শেয়ার করার জন্য APK ডাউনলোড হচ্ছে...'));
-      final response = await http.get(Uri.parse(url)).timeout(const Duration(minutes: 5));
-      if (response.statusCode != 200 || response.bodyBytes.isEmpty) {
-        throw Exception('APK download failed (${response.statusCode})');
-      }
-      final dir = await getTemporaryDirectory();
-      final apkFile = File(path.join(dir.path, 'RD-Photo-Signature-Resizer.apk'));
-      await apkFile.writeAsBytes(response.bodyBytes, flush: true);
-      if (!mounted) return;
-      setState(() => _busy = false);
-      await Share.shareXFiles(
-        [XFile(apkFile.path, mimeType: 'application/vnd.android.package-archive', name: 'RD-Photo-Signature-Resizer.apk')],
-        text: 'RD Photo & Signature Resizer APK',
+      await Share.share(
+        'RD Photo & Signature Resizer - Download APK:\n$url',
+        subject: 'RD Photo & Signature Resizer APK',
       );
     } catch (e) {
-      _message('${tr('Could not share APK', 'APK শেয়ার করা যায়নি')}: $e');
-    } finally {
-      if (mounted) setState(() => _busy = false);
+      _message('${tr('Could not share download link', 'ডাউনলোড লিংক শেয়ার করা যায়নি')}: $e');
     }
   }
 
   int? _parseTargetSize(String value) {
-    final match = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*(KB|K|MB|M)?\s*
+    final match = RegExp(r'^\s*(\d+(?:\.\d+)?)\s*(KB|K|MB|M)?\s*$', caseSensitive: false).firstMatch(value);
+    if (match == null) return null;
+    final amount = double.tryParse(match.group(1)!);
+    if (amount == null || amount <= 0) return null;
+    final unit = (match.group(2) ?? 'KB').toUpperCase();
+    final kb = unit == 'MB' || unit == 'M' ? (amount * 1024).round() : amount.round();
+    return kb >= 10 && kb <= 2048 ? kb : null;
+  }
+
+  String tr(String en, String bn) => _bengali ? bn : en;
 
   @override
   void dispose() {
