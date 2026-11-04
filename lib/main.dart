@@ -522,7 +522,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.18')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.19')),
             ]),
           ),
           actions: [
@@ -773,7 +773,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.18', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.19', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
@@ -942,7 +942,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                         ),
                       ],
                     ),
-                    Text(tr('Dimension presets', 'ছবির মাপ বেছে নিন'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Text(tr('Photo dimension presets', 'ছবির মাপ বেছে নিন'), style: const TextStyle(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 6),
                     Wrap(spacing: 6, runSpacing: 6, children: [
                       [200, 200], [300, 300], [300, 400], [600, 800], [1200, 1600]
@@ -951,6 +951,20 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                       onPressed: _busy ? null : () => setState(() {
                         _width.text = '${size[0]}';
                         _height.text = '${size[1]}';
+                        _output = null;
+                      }),
+                    )).toList()),
+                    const SizedBox(height: 8),
+                    Text(tr('Signature presets', 'সিগনেচারের মাপ'), style: const TextStyle(fontWeight: FontWeight.w600)),
+                    Wrap(spacing: 6, runSpacing: 6, children: [
+                      [140, 60], [300, 100], [600, 200]
+                    ].map((size) => ActionChip(
+                      label: Text('${size[0]}×${size[1]}'),
+                      onPressed: _busy ? null : () => setState(() {
+                        _width.text = '${size[0]}';
+                        _height.text = '${size[1]}';
+                        _keepRatio = false;
+                        _fitMode = 'pad';
                         _output = null;
                       }),
                     )).toList()),
@@ -1346,7 +1360,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.18')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.19')),
             ]),
           ),
           actions: [
@@ -1581,7 +1595,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.18', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.0.19', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
