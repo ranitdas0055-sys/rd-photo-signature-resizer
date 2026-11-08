@@ -37,11 +37,34 @@ jobs:
 
       - name: Set Android compile SDK
         run: |
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/compileSdk = flutter.compileSdkVersion/compileSdk = 36/' android/app/build.gradle.kts
-          elif [ -f android/app/build.gradle ]; then
-            sed -i 's/compileSdkVersion flutter.compileSdkVersion/compileSdkVersion 36/' android/app/build.gradle
-          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          candidates = [
+              Path("android/app/build.gradle.kts"),
+              Path("android/app/build.gradle"),
+          ]
+          gradle_file = next((path for path in candidates if path.exists()), None)
+          if gradle_file is None:
+              raise SystemExit("Android app Gradle file was not generated")
+
+          source = gradle_file.read_text()
+          patterns = [
+              r"compileSdk\\s*=\\s*flutter\\.compileSdkVersion",
+              r"compileSdkVersion\\s+flutter\\.compileSdkVersion",
+              r"compileSdk\\s+flutter\\.compileSdkVersion",
+          ]
+          updated = source
+          for pattern in patterns:
+              updated = re.sub(pattern, lambda match: match.group(0).split("flutter.")[0] + "36", updated)
+
+          if updated == source and not re.search(r"compileSdk(?:Version)?\\s*(?:=\\s*)?36", source):
+              raise SystemExit("Could not set compileSdk to 36; inspect generated Gradle file")
+          gradle_file.write_text(updated)
+          print(f"Using compileSdk 36 in {gradle_file}")
+          PY
+          grep -nE 'compileSdk|compileSdkVersion' android/app/build.gradle*
 
       - name: Install dependencies
         run: flutter pub get
