@@ -25,6 +25,8 @@ const Color brandBlue = Color(0xFF1769AA);
   return (oriented.width, oriented.height);
 }
 
+import 'dart:math' as math;
+
 Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final sourceBytes = args['bytes'] as Uint8List;
   final requestedWidth = args['width'] as int;
@@ -37,8 +39,8 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final format = (args['format'] ?? 'jpg').toString();
   final fitMode = (args['fitMode'] ?? 'none').toString();
   final ratio = source.width / source.height;
-  var width = requestedWidth;
-  var height = requestedHeight;
+  var width = requestedWidth.clamp(1, 6000);
+  var height = requestedHeight.clamp(1, 6000);
   late img.Image base;
 
   if (fitMode == 'crop') {
@@ -46,66 +48,88 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
     img.Image cropped;
     if (ratio > targetRatio) {
       final cw = (source.height * targetRatio).round().clamp(1, source.width);
-      cropped = img.copyCrop(source, x: (source.width-cw) ~/ 2, y: 0, width: cw, height: source.height);
+      cropped = img.copyCrop(source, x: (source.width - cw) ~/ 2, y: 0, width: cw, height: source.height);
     } else {
       final ch = (source.width / targetRatio).round().clamp(1, source.height);
-      cropped = img.copyCrop(source, x: 0, y: (source.height-ch) ~/ 2, width: source.width, height: ch);
+      cropped = img.copyCrop(source, x: 0, y: (source.height - ch) ~/ 2, width: source.width, height: ch);
     }
-    base = img.copyResize(cropped, width: width, height: height, interpolation: img.Interpolation.average);
+    base = img.copyResize(cropped, width: width, height: height, interpolation: img.Interpolation.linear);
   } else if (fitMode == 'pad') {
-    final scale = (width / source.width < height / source.height) ? width / source.width : height / source.height;
-    final fitted = img.copyResize(source,
-      width: (source.width*scale).round().clamp(1,width),
-      height: (source.height*scale).round().clamp(1,height),
-      interpolation: img.Interpolation.average);
+    final scale = math.min(width / source.width, height / source.height);
+    final fitted = img.copyResize(
+      source,
+      width: (source.width * scale).round().clamp(1, width),
+      height: (source.height * scale).round().clamp(1, height),
+      interpolation: img.Interpolation.linear,
+    );
     base = img.Image(width: width, height: height, numChannels: 3);
-    img.fill(base, color: img.ColorRgb8(255,255,255));
-    img.compositeImage(base, fitted, dstX: (width-fitted.width) ~/ 2, dstY: (height-fitted.height) ~/ 2);
+    img.fill(base, color: img.ColorRgb8(255, 255, 255));
+    img.compositeImage(base, fitted, dstX: (width - fitted.width) ~/ 2, dstY: (height - fitted.height) ~/ 2);
   } else {
     if (keepRatio) {
       if (width / height > ratio) {
-        width = (height * ratio).round().clamp(1,6000);
+        width = (height * ratio).round().clamp(1, 6000);
       } else {
-        height = (width / ratio).round().clamp(1,6000);
+        height = (width / ratio).round().clamp(1, 6000);
       }
     }
-    base = img.copyResize(source, width: width, height: height, interpolation: img.Interpolation.average);
+    base = img.copyResize(source, width: width, height: height, interpolation: img.Interpolation.linear);
   }
 
   if (format == 'png') return Uint8List.fromList(img.encodePng(base));
   if (format == 'webp') return Uint8List.fromList(img.encodeWebP(base, quality: 85));
 
+  // Smart JPEG compression:
+  // 1) Encode only a low-quality probe at the current dimensions.
+  // 2) If it fits, use a short binary search to find the best quality.
+  // 3) If it does not fit, estimate a smaller dimension from the byte ratio.
+  // This replaces the old 9 x 7 (up to 63) JPEG encodes with a small number.
   final limit = targetKb * 1024;
-  Uint8List? best;
-  var bestGap = 1 << 62;
-  // Limit the number of JPEG encodes so large photos resize faster.
-  // Search a compact set of dimensions and quality levels, keeping the
-  // closest result that does not exceed the requested KB size.
-  final scales = <double>[0.45, 0.60, 0.75, 0.90, 1.0, 1.15, 1.35, 1.65, 2.0];
-  const qualities = <int>[35, 50, 65, 78, 88, 96, 100];
-  for (final scale in scales) {
-    final w = (base.width * scale).round().clamp(1, 6000);
-    final h = (base.height * scale).round().clamp(1, 6000);
-    final working = (w == base.width && h == base.height)
-        ? base
-        : img.copyResize(base, width: w, height: h, interpolation: img.Interpolation.average);
-    for (final quality in qualities) {
-      final bytes = Uint8List.fromList(img.encodeJpg(working, quality: quality));
-      if (bytes.length <= limit) {
-        final gap = limit - bytes.length;
-        if (gap < bestGap) {
-          best = bytes;
-          bestGap = gap;
+  var working = base;
+  var scaleFromBase = 1.0;
+
+  Uint8List encode(img.Image image, int quality) =>
+      Uint8List.fromList(img.encodeJpg(image, quality: quality));
+
+  for (var attempt = 0; attempt < 8; attempt++) {
+    final lowQuality = encode(working, 35);
+
+    if (lowQuality.length <= limit) {
+      final highQuality = encode(working, 100);
+      if (highQuality.length <= limit) return highQuality;
+
+      var low = 35;
+      var high = 99;
+      var best = lowQuality;
+      while (low <= high) {
+        final mid = (low + high) ~/ 2;
+        final candidate = encode(working, mid);
+        if (candidate.length <= limit) {
+          best = candidate;
+          low = mid + 1;
+        } else {
+          high = mid - 1;
         }
       }
+      return best;
     }
-    if (best != null && bestGap <= limit * 0.01) break;
+
+    final estimatedScale = math.sqrt(limit / lowQuality.length) * 0.92;
+    final stepScale = estimatedScale.clamp(0.45, 0.90);
+    scaleFromBase *= stepScale;
+    final nextWidth = (base.width * scaleFromBase).round().clamp(1, 6000);
+    final nextHeight = (base.height * scaleFromBase).round().clamp(1, 6000);
+    if (nextWidth >= working.width && nextHeight >= working.height) break;
+    working = img.copyResize(
+      base,
+      width: nextWidth,
+      height: nextHeight,
+      interpolation: img.Interpolation.linear,
+    );
   }
-  if (best != null) return best;
-  final smallest = img.copyResize(base,
-    width: (base.width*0.35).round().clamp(1,6000),
-    height: (base.height*0.35).round().clamp(1,6000));
-  return Uint8List.fromList(img.encodeJpg(smallest, quality: 20));
+
+  // Best-effort fallback; caller reports clearly if the target was impossible.
+  return encode(working, 20);
 }
 
 Future<void> main() async {
@@ -157,6 +181,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   bool _keepRatio = true;
   bool _bengali = false;
   bool _busy = false;
+  String? _progressMessage;
   bool _updateCheckStarted = false;
   int _scalePercent = 100;
   String _outputFormat = 'jpg';
@@ -274,22 +299,12 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
   }
 
   Future<void> _shareAppApk() async {
+    // GitHub redirects this stable URL to the APK asset in the newest release.
+    const latestApkUrl =
+        'https://github.com/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest/download/app-release.apk';
     try {
-      final latest = await http.get(
-        Uri.parse('https://api.github.com/repos/ranitdas0055-sys/rd-photo-signature-resizer/releases/latest'),
-        headers: {'Accept': 'application/vnd.github+json'},
-      ).timeout(const Duration(seconds: 20));
-      if (latest.statusCode != 200) throw Exception('Could not find latest release');
-      final data = jsonDecode(latest.body) as Map<String, dynamic>;
-      final assets = (data['assets'] as List<dynamic>? ?? []);
-      final apk = assets.whereType<Map>().cast<Map>().firstWhere(
-        (item) => item['name'] == 'app-release.apk',
-        orElse: () => <String, dynamic>{},
-      );
-      final url = apk['browser_download_url']?.toString();
-      if (url == null || url.isEmpty) throw Exception('APK file not found in latest release');
       await Share.share(
-        'RD Photo & Signature Resizer - Download APK:\n$url',
+        'RD Photo & Signature Resizer - Download latest APK:\n$latestApkUrl',
         subject: 'RD Photo & Signature Resizer APK',
       );
     } catch (e) {
@@ -380,7 +395,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
       _message(tr('Enter valid dimensions first.', 'আগে সঠিক Width ও Height দিন।'));
       return;
     }
-    setState(() => _busy = true);
+    setState(() { _busy = true; _progressMessage = tr('Preparing batch resize...', 'একসাথে ছবিগুলো প্রস্তুত হচ্ছে...'); });
     var saved = 0;
     try {
       final dir = await getTemporaryDirectory();
@@ -400,13 +415,13 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
         await out.writeAsBytes(result, flush: true);
         await Gal.putImage(out.path, album: 'RD Photo Resizer');
         saved++;
-        if (mounted) _message(tr('Processed $saved of ${_batchSources.length} images...', '$saved / ${_batchSources.length}টি ছবি তৈরি হচ্ছে...'));
+        if (mounted) setState(() => _progressMessage = tr('Batch progress: $saved of ${_batchSources.length}', 'অগ্রগতি: ${_batchSources.length}টির মধ্যে $savedটি'));
       }
       if (mounted) _message(tr('Batch complete: $saved images saved to Gallery.', 'Batch সম্পূর্ণ: $savedটি ছবি Gallery-তে সেভ হয়েছে।'));
     } catch (e) {
       if (mounted) _message('${tr('Batch resize stopped', 'Batch Resize বন্ধ হয়েছে')}: $e');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() { _busy = false; _progressMessage = null; });
     }
   }
 
@@ -516,7 +531,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.0.19')),
+                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.1.0')),
             ]),
           ),
           actions: [
@@ -656,9 +671,11 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
       return;
     }
 
-    setState(() => _busy = true);
+    setState(() { _busy = true; _progressMessage = tr('Reading image...', 'ছবি পড়া হচ্ছে...'); });
     try {
       final sourceBytes = await file.readAsBytes();
+      if (mounted) setState(() => _progressMessage = tr('Resizing dimensions...', 'ছবির মাপ পরিবর্তন হচ্ছে...'));
+      if (mounted) setState(() => _progressMessage = tr('Optimizing file size...', 'ফাইল সাইজ কমানো হচ্ছে...'));
       final result = await compute(_resizeImageInBackground, <String, Object>{
         'bytes': sourceBytes,
         'width': requestedWidth,
@@ -682,7 +699,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
     } catch (e) {
       _message('${tr('Resize failed', 'রিসাইজ করা যায়নি')}: $e');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) setState(() { _busy = false; _progressMessage = null; });
     }
   }
 
@@ -767,7 +784,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                     SizedBox(height: 14),
                     Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
-                    Text('VERSION 1.0.19', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
+                    Text('VERSION 1.1.0', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
                 ),
                 const Divider(color: Colors.white30),
@@ -778,7 +795,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 ListTile(leading: const Icon(Icons.play_circle_fill, color: Colors.white), title: const Text('Govt Job with RD', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); Share.share('https://youtube.com/@govtjobwithrd'); }),
                 const Padding(padding: EdgeInsets.fromLTRB(22, 24, 18, 10), child: Text('ABOUT', style: TextStyle(color: Colors.white70))),
                 ListTile(leading: const Icon(Icons.system_update, color: Colors.white), title: const Text('Check for updates', style: TextStyle(color: Colors.white)), onTap: () { Navigator.pop(context); _updateCheckStarted = false; _checkForUpdate(showUpToDate: true); }),
-                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.0.19', style: TextStyle(color: Colors.white))),
+                const ListTile(leading: Icon(Icons.verified_outlined, color: Colors.white), title: Text('Version 1.1.0', style: TextStyle(color: Colors.white))),
               ],
             ),
           ),
@@ -801,6 +818,26 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
           children: [
+            if (_busy)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: _sectionCard(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(_progressMessage ?? tr('Processing...', 'কাজ চলছে...')),
+                      const SizedBox(height: 8),
+                      const LinearProgressIndicator(minHeight: 5),
+                      const SizedBox(height: 4),
+                      Text(
+                        tr('Please keep the app open until processing finishes.',
+                            'কাজ শেষ না হওয়া পর্যন্ত অ্যাপটি খোলা রাখুন।'),
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
             Container(
               padding: const EdgeInsets.all(20),
               decoration: BoxDecoration(
