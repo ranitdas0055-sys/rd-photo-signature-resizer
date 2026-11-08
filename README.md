@@ -7,12 +7,14 @@ Android-first Flutter app for resizing passport photos and signatures.
 - Crop and rotate images
 - Resize by custom pixel width and height, percentage, and common photo presets
 - Signature dimension presets (140×60, 300×100, 600×200) plus custom dimensions
-- Compress JPG toward a target size from 10 KB to 2 MB; enter values in KB or MB
+- Faster smart JPEG compression toward a target size from 10 KB to 2 MB; enter values in KB or MB
+- Reduced repeated JPEG encoding and adaptive dimension scaling for large images
+- Visible processing indicator and stage messages during resize
 - JPG/JPEG, PNG, and WEBP output
 - Square / aspect-ratio fitting: crop-to-fill, white padding, and normal resize
 - Preview output dimensions and file size in KB and MB
 - Save to a user-selected location or the RD Photo Resizer Gallery album
-- Share resized images and share the latest APK file link
+- Share resized images and share a stable direct link to the latest APK release
 - Bengali / English interface and saved settings
 - Offline image processing; selected photos are not uploaded to a server
 - In-app GitHub release update check and APK installer handoff
