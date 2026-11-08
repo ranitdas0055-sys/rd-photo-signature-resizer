@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -25,8 +27,6 @@ const Color brandBlue = Color(0xFF1769AA);
   return (oriented.width, oriented.height);
 }
 
-import 'dart:math' as math;
-
 Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final sourceBytes = args['bytes'] as Uint8List;
   final requestedWidth = args['width'] as int;
@@ -39,18 +39,18 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   final format = (args['format'] ?? 'jpg').toString();
   final fitMode = (args['fitMode'] ?? 'none').toString();
   final ratio = source.width / source.height;
-  var width = requestedWidth.clamp(1, 6000);
-  var height = requestedHeight.clamp(1, 6000);
+  var width = requestedWidth.clamp(1, 6000).toInt();
+  var height = requestedHeight.clamp(1, 6000).toInt();
   late img.Image base;
 
   if (fitMode == 'crop') {
     final targetRatio = width / height;
     img.Image cropped;
     if (ratio > targetRatio) {
-      final cw = (source.height * targetRatio).round().clamp(1, source.width);
+      final cw = (source.height * targetRatio).round().clamp(1, source.width).toInt();
       cropped = img.copyCrop(source, x: (source.width - cw) ~/ 2, y: 0, width: cw, height: source.height);
     } else {
-      final ch = (source.width / targetRatio).round().clamp(1, source.height);
+      final ch = (source.width / targetRatio).round().clamp(1, source.height).toInt();
       cropped = img.copyCrop(source, x: 0, y: (source.height - ch) ~/ 2, width: source.width, height: ch);
     }
     base = img.copyResize(cropped, width: width, height: height, interpolation: img.Interpolation.linear);
@@ -58,8 +58,8 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
     final scale = math.min(width / source.width, height / source.height);
     final fitted = img.copyResize(
       source,
-      width: (source.width * scale).round().clamp(1, width),
-      height: (source.height * scale).round().clamp(1, height),
+      width: (source.width * scale).round().clamp(1, width).toInt(),
+      height: (source.height * scale).round().clamp(1, height).toInt(),
       interpolation: img.Interpolation.linear,
     );
     base = img.Image(width: width, height: height, numChannels: 3);
@@ -68,9 +68,9 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
   } else {
     if (keepRatio) {
       if (width / height > ratio) {
-        width = (height * ratio).round().clamp(1, 6000);
+        width = (height * ratio).round().clamp(1, 6000).toInt();
       } else {
-        height = (width / ratio).round().clamp(1, 6000);
+        height = (width / ratio).round().clamp(1, 6000).toInt();
       }
     }
     base = img.copyResize(source, width: width, height: height, interpolation: img.Interpolation.linear);
@@ -115,10 +115,10 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
     }
 
     final estimatedScale = math.sqrt(limit / lowQuality.length) * 0.92;
-    final stepScale = estimatedScale.clamp(0.45, 0.90);
+    final stepScale = estimatedScale.clamp(0.45, 0.90).toDouble();
     scaleFromBase *= stepScale;
-    final nextWidth = (base.width * scaleFromBase).round().clamp(1, 6000);
-    final nextHeight = (base.height * scaleFromBase).round().clamp(1, 6000);
+    final nextWidth = (base.width * scaleFromBase).round().clamp(1, 6000).toInt();
+    final nextHeight = (base.height * scaleFromBase).round().clamp(1, 6000).toInt();
     if (nextWidth >= working.width && nextHeight >= working.height) break;
     working = img.copyResize(
       base,
