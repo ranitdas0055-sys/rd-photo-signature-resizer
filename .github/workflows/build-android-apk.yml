@@ -25,6 +25,37 @@ jobs:
           cache: true
       - name: Generate Android platform files
         run: flutter create . --platforms=android
+      - name: Set Android compile SDK
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          candidates = [
+              Path("android/app/build.gradle.kts"),
+              Path("android/app/build.gradle"),
+          ]
+          gradle_file = next((path for path in candidates if path.exists()), None)
+          if gradle_file is None:
+              raise SystemExit("Android app Gradle file was not generated")
+
+          source = gradle_file.read_text()
+          replacements = {
+              "compileSdk = flutter.compileSdkVersion": "compileSdk = 36",
+              "compileSdkVersion flutter.compileSdkVersion": "compileSdkVersion 36",
+              "compileSdk flutter.compileSdkVersion": "compileSdk 36",
+          }
+          updated = source
+          for old, new in replacements.items():
+              updated = updated.replace(old, new)
+
+          if updated == source and "compileSdk = 36" not in source and "compileSdkVersion 36" not in source and "compileSdk 36" not in source:
+              raise SystemExit("Could not set compileSdk to 36; inspect generated Gradle file")
+
+          gradle_file.write_text(updated)
+          print(f"Using compileSdk 36 in {gradle_file}")
+          PY
+          grep -nE 'compileSdk|compileSdkVersion' android/app/build.gradle*
+
       - name: Install dependencies
         run: flutter pub get
       - name: Build debug APK
