@@ -5,6 +5,10 @@ on:
   push:
     branches: [ main ]
 
+concurrency:
+  group: rd-photo-resizer-${{ github.workflow }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
