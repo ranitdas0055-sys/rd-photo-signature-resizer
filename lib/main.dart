@@ -136,7 +136,17 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await MobileAds.instance.initialize();
+
+  // Ads must never prevent the image resizer from opening. Some Android
+  // devices/ROMs can fail while initializing the Play Services ads plugin.
+  // Start the app even when the optional ads service is unavailable.
+  try {
+    await MobileAds.instance.initialize().timeout(const Duration(seconds: 8));
+  } catch (error, stackTrace) {
+    debugPrint('AdMob initialization skipped: $error');
+    debugPrintStack(stackTrace: stackTrace);
+  }
+
   runApp(const RDResizerApp());
 }
 
