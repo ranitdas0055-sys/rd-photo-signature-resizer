@@ -68,6 +68,12 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Read app version
+        id: app_version
+        run: |
+          VERSION=$(sed -n 's/^version: //p' pubspec.yaml | cut -d+ -f1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Analyze app source
         run: flutter analyze lib
 
@@ -77,7 +83,17 @@ jobs:
       - name: Publish APK
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: apk-v1.1.0
-          name: RD Photo & Signature Resizer v1.1.0
+          tag_name: apk-v${{ steps.app_version.outputs.version }}
+          name: RD Photo Resizer v${{ steps.app_version.outputs.version }}
           generate_release_notes: true
           files: build/app/outputs/flutter-apk/app-release.apk
+
+      - name: Publish direct APK link
+        run: |
+          VERSION='${{ steps.app_version.outputs.version }}'
+          URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/apk-v${VERSION}/app-release.apk"
+          {
+            echo '### RD Photo Resizer APK'
+            echo "Version: ${VERSION}"
+            echo "[Download APK directly](${URL})"
+          } >> "$GITHUB_STEP_SUMMARY"
