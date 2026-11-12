@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'widgets/ad_banner.dart';
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
@@ -133,6 +135,7 @@ Uint8List _resizeImageInBackground(Map<String, Object> args) {
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await MobileAds.instance.initialize();
   runApp(const RDResizerApp());
 }
 
@@ -142,7 +145,7 @@ class RDResizerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'RD Custom Photo Resizer',
+      title: 'RD Photo Resizer',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
         useMaterial3: true,
@@ -530,7 +533,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                 title: Text(tr('Offline processing', 'অফলাইনে ছবি প্রসেস হয়')),
                 subtitle: Text(tr('Core photo tools work without internet.', 'মূল ছবি সম্পাদনার কাজ ইন্টারনেট ছাড়াই চলে।'))),
               const ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.info_outline),
-                title: Text('RD Photo & Signature Resizer'), subtitle: Text('Version 1.1.0')),
+                title: Text('RD Photo Resizer'), subtitle: Text('Version 1.1.0')),
             ]),
           ),
           actions: [
@@ -781,7 +784,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                     Icon(Icons.photo_size_select_large, color: Colors.white, size: 62),
                     SizedBox(height: 14),
-                    Text('RD CUSTOM PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
+                    Text('RD PHOTO RESIZER', style: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold)),
                     SizedBox(height: 5),
                     Text('VERSION 1.1.0', style: TextStyle(color: Colors.white70, letterSpacing: 3)),
                   ]),
@@ -801,7 +804,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
         ),
       ),
       appBar: AppBar(
-        title: Text(tr('RD Custom Resizer', 'RD কাস্টম রিসাইজার')),
+        title: Text(tr('RD Photo Resizer', 'RD ফটো রিসাইজার')),
         leading: Builder(builder: (ctx) => IconButton(icon: const Icon(Icons.menu), onPressed: () => Scaffold.of(ctx).openDrawer())),
         actions: [
           TextButton(
@@ -813,6 +816,7 @@ class _ResizerHomePageState extends State<ResizerHomePage> {
           ),
         ],
       ),
+      bottomNavigationBar: const SafeArea(child: AdBannerWidget()),
       body: SafeArea(
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 28),
